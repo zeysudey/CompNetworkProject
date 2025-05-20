@@ -9,94 +9,167 @@ import java.awt.Color;
 import java.awt.Dimension;
 import java.awt.FlowLayout;
 import java.awt.Font;
+import java.awt.GridLayout;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
 import java.util.Random;
 import javax.swing.BorderFactory;
+import javax.swing.Box;
+import javax.swing.BoxLayout;
 import javax.swing.JButton;
 import javax.swing.JLabel;
 import javax.swing.JPanel;
 import javax.swing.SwingConstants;
+
 
 /**
  *
  * @author zeysu
  */
 public class ehe extends javax.swing.JFrame {
-    private Triangle[] triangles = new Triangle[24];
- private JButton zarAtButton; // Zar atma butonu
-    private JLabel zar1Label, zar2Label; // Zarları göstermek için
-    private Random random; // Rastgele sayı üreteci
-    /**
-     * Creates new form ehe
-     */
+          private Triangle[] triangles = new Triangle[24];
+    private JButton zarAtButton, newGameButton;
+    private JLabel zar1Label, zar2Label;
+    private JLabel turnLabel;
+    private JLabel whiteScoreLabel, blackScoreLabel;
+    private Random random;
+    private boolean whiteTurn = true;
+    private BoardPanel board;
+    private boolean diceRolled = false;
+    
     public ehe() {
-          setTitle("Tavla Oyunu");
+ setTitle("Tavla Oyunu");
         setDefaultCloseOperation(EXIT_ON_CLOSE);
         setResizable(false);
-        
-        // Frame'i büyütelim - genişlik ve yüksekliği artır
-        setSize(1100, 700);
+        setSize(1200, 700);
 
         // Ana içerik paneli
         JPanel mainPanel = new JPanel(new BorderLayout());
         
         // Tavla tahtası
-        BoardPanel board = new BoardPanel();
+        board = new BoardPanel();
+        board.setParentFrame(this); // BoardPanel'e bu frame'i tanıt
         mainPanel.add(board, BorderLayout.CENTER);
         
         // Kontrol paneli (sağ taraf)
         JPanel controlPanel = new JPanel();
-        controlPanel.setPreferredSize(new Dimension(100, 600));
-        controlPanel.setLayout(new FlowLayout());
-        controlPanel.setBackground(new Color(139, 69, 19)); // Ahşap rengi
+        controlPanel.setPreferredSize(new Dimension(150, 600));
+        controlPanel.setLayout(new BoxLayout(controlPanel, BoxLayout.Y_AXIS));
+        controlPanel.setBackground(new Color(139, 69, 19));
+        controlPanel.setBorder(BorderFactory.createEmptyBorder(20, 10, 20, 10));
+        
+        // Sıra göstergesi
+        turnLabel = new JLabel("Sıra: BEYAZ");
+        turnLabel.setPreferredSize(new Dimension(150, 40));
+        turnLabel.setHorizontalAlignment(SwingConstants.CENTER);
+        turnLabel.setFont(new Font("Arial", Font.BOLD, 16));
+        turnLabel.setForeground(Color.WHITE);
+        turnLabel.setMaximumSize(new Dimension(150, 40));
+        turnLabel.setAlignmentX(CENTER_ALIGNMENT);
+        
+        // Skor göstergeleri
+        whiteScoreLabel = new JLabel("Beyaz: 0/15");
+        whiteScoreLabel.setHorizontalAlignment(SwingConstants.CENTER);
+        whiteScoreLabel.setFont(new Font("Arial", Font.BOLD, 14));
+        whiteScoreLabel.setForeground(Color.WHITE);
+        whiteScoreLabel.setMaximumSize(new Dimension(150, 30));
+        whiteScoreLabel.setAlignmentX(CENTER_ALIGNMENT);
+        
+        blackScoreLabel = new JLabel("Siyah: 0/15");
+        blackScoreLabel.setHorizontalAlignment(SwingConstants.CENTER);
+        blackScoreLabel.setFont(new Font("Arial", Font.BOLD, 14));
+        blackScoreLabel.setForeground(Color.BLACK);
+        blackScoreLabel.setMaximumSize(new Dimension(150, 30));
+        blackScoreLabel.setAlignmentX(CENTER_ALIGNMENT);
         
         // Zar atma butonu
         zarAtButton = new JButton("Zar At");
-        zarAtButton.setPreferredSize(new Dimension(80, 40));
+        zarAtButton.setFont(new Font("Arial", Font.BOLD, 14));
         zarAtButton.setFocusable(false);
+        zarAtButton.setMaximumSize(new Dimension(120, 40));
+        zarAtButton.setAlignmentX(CENTER_ALIGNMENT);
         
-        // Zar göstergeleri
+        // Yeni oyun butonu
+        newGameButton = new JButton("Yeni Oyun");
+        newGameButton.setFont(new Font("Arial", Font.BOLD, 14));
+        newGameButton.setFocusable(false);
+        newGameButton.setMaximumSize(new Dimension(120, 40));
+        newGameButton.setAlignmentX(CENTER_ALIGNMENT);
+        
+        // Zar göstergeleri paneli
+        JPanel dicePanel = new JPanel(new GridLayout(1, 2, 10, 0));
+        dicePanel.setOpaque(false);
+        dicePanel.setMaximumSize(new Dimension(120, 60));
+        
         zar1Label = new JLabel("0");
-        zar1Label.setPreferredSize(new Dimension(50, 50));
         zar1Label.setHorizontalAlignment(SwingConstants.CENTER);
-        zar1Label.setFont(new Font("Arial", Font.BOLD, 24));
-        zar1Label.setForeground(Color.WHITE);
-        zar1Label.setBackground(new Color(139, 69, 19));
+        zar1Label.setFont(new Font("Arial", Font.BOLD, 28));
+        zar1Label.setForeground(Color.BLACK);
+        zar1Label.setBackground(Color.WHITE);
         zar1Label.setOpaque(true);
-        zar1Label.setBorder(BorderFactory.createLineBorder(Color.WHITE));
+        zar1Label.setBorder(BorderFactory.createLineBorder(Color.BLACK, 2));
         
         zar2Label = new JLabel("0");
-        zar2Label.setPreferredSize(new Dimension(50, 50));
         zar2Label.setHorizontalAlignment(SwingConstants.CENTER);
-        zar2Label.setFont(new Font("Arial", Font.BOLD, 24));
-        zar2Label.setForeground(Color.WHITE);
-        zar2Label.setBackground(new Color(139, 69, 19));
+        zar2Label.setFont(new Font("Arial", Font.BOLD, 28));
+        zar2Label.setForeground(Color.BLACK);
+        zar2Label.setBackground(Color.WHITE);
         zar2Label.setOpaque(true);
-        zar2Label.setBorder(BorderFactory.createLineBorder(Color.WHITE));
+        zar2Label.setBorder(BorderFactory.createLineBorder(Color.BLACK, 2));
+        
+        dicePanel.add(zar1Label);
+        dicePanel.add(zar2Label);
         
         // Random nesnesi oluştur
         random = new Random();
         
-        // Zar atma olayı
+        // Zar atma düğmesi için action listener
         zarAtButton.addActionListener(new ActionListener() {
             @Override
             public void actionPerformed(ActionEvent e) {
-                // 1-6 arası rastgele iki zar
-                int zar1 = random.nextInt(6) + 1;
-                int zar2 = random.nextInt(6) + 1;
-                
-                // Zarları göster
-                zar1Label.setText(String.valueOf(zar1));
-                zar2Label.setText(String.valueOf(zar2));
+                if (!diceRolled) {
+                    int zar1 = random.nextInt(6) + 1;
+                    int zar2 = random.nextInt(6) + 1;
+                    
+                    zar1Label.setText(String.valueOf(zar1));
+                    zar2Label.setText(String.valueOf(zar2));
+                    
+                    if (board != null) {
+                        board.setDiceValues(zar1, zar2);
+                        board.setDiceRolled(true);
+                    }
+                    
+                    diceRolled = true;
+                    zarAtButton.setEnabled(false);
+                    
+                    // Çift zar durumunda buton metnini güncelle
+                    if (zar1 == zar2) {
+                        zarAtButton.setText("Çift " + zar1);
+                    }
+                }
+            }
+        });
+        
+        // Yeni oyun düğmesi için action listener
+        newGameButton.addActionListener(new ActionListener() {
+            @Override
+            public void actionPerformed(ActionEvent e) {
+                resetGame();
             }
         });
         
         // Kontrol paneline elemanları ekle
+        controlPanel.add(Box.createVerticalStrut(20));
+        controlPanel.add(turnLabel);
+        controlPanel.add(Box.createVerticalStrut(20));
+        controlPanel.add(whiteScoreLabel);
+        controlPanel.add(blackScoreLabel);
+        controlPanel.add(Box.createVerticalStrut(30));
         controlPanel.add(zarAtButton);
-        controlPanel.add(new JLabel(" ")); // Boşluk
-        controlPanel.add(zar1Label);
-        controlPanel.add(zar2Label);
+        controlPanel.add(Box.createVerticalStrut(20));
+        controlPanel.add(dicePanel);
+        controlPanel.add(Box.createVerticalStrut(40));
+        controlPanel.add(newGameButton);
         
         // Ana panele kontrol panelini ekle
         mainPanel.add(controlPanel, BorderLayout.EAST);
@@ -106,9 +179,94 @@ public class ehe extends javax.swing.JFrame {
         
         // Merkeze hizala
         setLocationRelativeTo(null);
+        
+        // Form gösterilmeden önce BoardPanel'e başlangıç sırasını bildir
+        if (board != null) {
+            board.setWhiteTurn(whiteTurn);
+        }
+        
+        // Periyodik güncelleme için timer (skorları günceller)
+        javax.swing.Timer timer = new javax.swing.Timer(100, new ActionListener() {
+            @Override
+            public void actionPerformed(ActionEvent e) {
+                updateScores();
+                updateTurnStatus();
+            }
+        });
+        timer.start();
+        
         setVisible(true);
     }
-private void setupTriangles() {
+    
+    // Oyuncu sırasını değiştiren metod
+    public void changeTurn() {
+        whiteTurn = !whiteTurn;
+        updateTurnLabel();
+        
+        // Yeni tur için hazırlık
+        diceRolled = false;
+        zarAtButton.setEnabled(true);
+        zarAtButton.setText("Zar At");
+        zar1Label.setText("0");
+        zar2Label.setText("0");
+        
+        if (board != null) {
+            board.setWhiteTurn(whiteTurn);
+        }
+    }
+
+    // Sıra etiketini güncelle
+    private void updateTurnLabel() {
+        if (whiteTurn) {
+            turnLabel.setText("Sıra: BEYAZ");
+            turnLabel.setForeground(Color.WHITE);
+        } else {
+            turnLabel.setText("Sıra: SİYAH");
+            turnLabel.setForeground(Color.BLACK);
+        }
+    }
+    
+    // Skorları güncelle
+    private void updateScores() {
+        if (board != null) {
+            whiteScoreLabel.setText("Beyaz: " + board.whiteHome.size() + "/15");
+            blackScoreLabel.setText("Siyah: " + board.blackHome.size() + "/15");
+        }
+    }
+    
+    // Sıra durumunu güncelle
+    private void updateTurnStatus() {
+        // BoardPanel'deki gerçek sıra durumunu kontrol et
+        if (board != null && board.isWhiteTurn() != whiteTurn) {
+            whiteTurn = board.isWhiteTurn();
+            updateTurnLabel();
+        }
+        
+        // Zar durumunu kontrol et ve güncelle
+        if (board != null) {
+            diceRolled = board.isDiceRolled();
+            zarAtButton.setEnabled(!diceRolled);
+        }
+    }
+    
+    // Oyunu sıfırla
+    private void resetGame() {
+        whiteTurn = true; // Başlangıç sırası beyaza ver
+        diceRolled = false;
+        updateTurnLabel();
+        
+        zarAtButton.setEnabled(true);
+        zarAtButton.setText("Zar At");
+        zar1Label.setText("0");
+        zar2Label.setText("0");
+        
+        // BoardPanel'i sıfırla
+        if (board != null) {
+            board.resetGame();
+        }
+    }
+    
+    private void setupTriangles() {
         int width = 60;
         int upY = 0;
         int downY = 600;
@@ -120,6 +278,8 @@ private void setupTriangles() {
             triangles[i + 12] = new Triangle((11 - i) * width + 20, downY, false);
         }
     }
+
+
     /**
      * This method is called from within the constructor to initialize the form.
      * WARNING: Do NOT modify this code. The content of this method is always
@@ -135,7 +295,7 @@ private void setupTriangles() {
         getContentPane().setLayout(layout);
         layout.setHorizontalGroup(
             layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
-            .addGap(0, 2722, Short.MAX_VALUE)
+            .addGap(0, 3072, Short.MAX_VALUE)
         );
         layout.setVerticalGroup(
             layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
@@ -173,13 +333,8 @@ private void setupTriangles() {
         //</editor-fold>
 
         /* Create and display the form */
-        java.awt.EventQueue.invokeLater(new Runnable() {
-            public void run() {
-                new ehe().setVisible(true);
-            }
-        });
+        
     }
-
     // Variables declaration - do not modify//GEN-BEGIN:variables
     // End of variables declaration//GEN-END:variables
 }

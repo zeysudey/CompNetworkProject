@@ -4,6 +4,7 @@
  */
 package com.mycompany.kendininesandn;
 
+import java.awt.BasicStroke;
 import java.awt.Color;
 import java.awt.Graphics;
 import java.awt.Graphics2D;
@@ -24,51 +25,68 @@ public class Taslabel extends JLabel{
     private boolean secili = false;
     private Point dragPoint;
     private int originalX, originalY;
-    private BoardPanel boardPanel;  // BoardPanel referansı
-    private int triangleIndex = -1; // Taşın hangi üçgende olduğunu takip et
+    private BoardPanel boardPanel;
+    private int triangleIndex = -1;
+    private boolean hover = false;
+    private static final int BAR_INDEX = 24;
+    private static final int WHITE_HOME_INDEX = 25;
+    private static final int BLACK_HOME_INDEX = 26;
+    private boolean isWhite;
 
-    // Taşı görünür yap ve rengini belirle
+    public Taslabel(boolean isWhite, BoardPanel boardPanel) {
+    this.isWhite = isWhite;
+    this.boardPanel = boardPanel;
+}
+  // Default constructor - required for the original implementation
+    public Taslabel() {
+        // Default constructor
+    }
     public void setTasGoster(boolean goster, Color renk) {
         this.showTas = goster;
         this.tasRenk = renk;
-        repaint();  // yeniden çiz
+        repaint();
     }
-// BoardPanel referansını ayarla
+    public boolean isWhite() {
+    return tasRenk == Color.WHITE;
+}
+    public void moveTo(int x, int y) {
+    setLocation(x, y);
+    boardPanel.nextTurn();  // whiteTurn burada değiştirilsin
+}
     public void setBoardPanel(BoardPanel panel, int triangleIndex) {
         this.boardPanel = panel;
         this.triangleIndex = triangleIndex;
         setupMouseListeners();
     }
     
- // Taşın üçgen indeksini al
     public int getTriangleIndex() {
         return this.triangleIndex;
     }
     
-    // Taşın üçgen indeksini ayarla
     public void setTriangleIndex(int index) {
         this.triangleIndex = index;
     }
     
-    // Taşın rengini al
     public Color getTasRenk() {
         return this.tasRenk;
     }
     
-    // Sürükle-bırak özelliği için fare dinleyicileri
     private void setupMouseListeners() {
-        // Fare basıldığında
         addMouseListener(new MouseAdapter() {
             @Override
             public void mousePressed(MouseEvent e) {
                 if (!showTas) return;
+                
+                // Bar'daki veya Home'daki taşlar hareket ettirilmez
+                if (triangleIndex == WHITE_HOME_INDEX || triangleIndex == BLACK_HOME_INDEX) {
+                    return;
+                }
                 
                 secili = true;
                 originalX = getX();
                 originalY = getY();
                 dragPoint = e.getPoint();
                 
-                // Taşı en üste getir
                 getParent().setComponentZOrder(Taslabel.this, 0);
                 boardPanel.setSelectedPiece(Taslabel.this);
                 repaint();
@@ -80,53 +98,107 @@ public class Taslabel extends JLabel{
                 
                 secili = false;
                 
-                // Bırakılan yerdeki üçgeni bul
                 int targetTriangleIndex = boardPanel.findTriangleAt(getX() + getWidth()/2, getY() + getHeight()/2);
                 
                 if (targetTriangleIndex != -1) {
-                    // Taşın hareketini BoardPanel'e bildir
                     boardPanel.movePiece(Taslabel.this, triangleIndex, targetTriangleIndex);
                 } else {
-                    // Taş geçerli bir üçgene bırakılmadıysa orijinal konumuna geri dön
                     setLocation(originalX, originalY);
                 }
                 
+                boardPanel.clearLegalMoves();
+                repaint();
+            }
+            
+            @Override
+            public void mouseEntered(MouseEvent e) {
+                if (!showTas) return;
+                
+                // Home'daki taşlar için hover efekti yok
+                if (triangleIndex == WHITE_HOME_INDEX || triangleIndex == BLACK_HOME_INDEX) {
+                    return;
+                }
+                
+                hover = true;
+                boardPanel.setHoverPiece(Taslabel.this);
+                repaint();
+            }
+
+            @Override
+            public void mouseExited(MouseEvent e) {
+                if (!showTas) return;
+                
+                hover = false;
+                boardPanel.setHoverPiece(null);
+                boardPanel.clearLegalMoves();
                 repaint();
             }
         });
 
-        // Fare sürüklendiğinde
         addMouseMotionListener(new MouseMotionAdapter() {
             @Override
             public void mouseDragged(MouseEvent e) {
                 if (!secili) return;
                 
-                // Yeni konum hesapla
                 int newX = getX() + e.getX() - dragPoint.x;
                 int newY = getY() + e.getY() - dragPoint.y;
                 
-                // Taşı taşı
                 setLocation(newX, newY);
             }
         });
     }
-     @Override
+
+    @Override
     protected void paintComponent(Graphics g) {
         super.paintComponent(g);
         if (showTas) {
             Graphics2D g2 = (Graphics2D) g;
             g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
             
-            // Seçili taşa vurgu efekti
-            if (secili) {
-                g2.setColor(tasRenk.brighter());
-                int highlightSize = 4;
-                g2.fillOval(-highlightSize/2, -highlightSize/2, getWidth() + highlightSize, getHeight() + highlightSize);
+            // Taşı çiz
+            g2.setColor(tasRenk);
+            int diameter = Math.min(getWidth(), getHeight()) - 10;
+            g2.fillOval((getWidth() - diameter) / 2, (getHeight() - diameter) / 2, diameter, diameter);
+            
+            // Kenar çizgisi
+            g2.setColor(Color.BLACK);
+            g2.setStroke(new BasicStroke(1.5f));
+            g2.drawOval((getWidth() - diameter) / 2, (getHeight() - diameter) / 2, diameter, diameter);
+            
+            // Bar'daki taşlar için özel gösterim
+            if (triangleIndex == BAR_INDEX) {
+                g2.setColor(Color.RED);
+                g2.setStroke(new BasicStroke(2.0f));
+                g2.drawOval((getWidth() - diameter) / 2 - 2, (getHeight() - diameter) / 2 - 2, diameter + 4, diameter + 4);
             }
             
-            g2.setColor(tasRenk);
-            int diameter = Math.min(getWidth(), getHeight()) - 10;  // kenarlardan boşluk
-            g2.fillOval((getWidth() - diameter) / 2, (getHeight() - diameter) / 2, diameter, diameter);
+            // Seçili taşa belirgin kenar çizgisi
+            if (secili) {
+                if (tasRenk.equals(Color.BLACK)) {
+                    g2.setColor(Color.CYAN);
+                } else {
+                    g2.setColor(Color.RED);
+                }
+                
+                g2.setStroke(new BasicStroke(3.0f));
+                int borderDiameter = diameter + 4;
+                int borderX = (getWidth() - borderDiameter) / 2;
+                int borderY = (getHeight() - borderDiameter) / 2;
+                g2.drawOval(borderX, borderY, borderDiameter, borderDiameter);
+            }
+            
+            // Hover efekti
+            else if (hover) {
+                g2.setColor(new Color(255, 255, 0, 100)); // Yarı saydam sarı
+                g2.setStroke(new BasicStroke(2.0f));
+                int hoverDiameter = diameter + 6;
+                int hoverX = (getWidth() - hoverDiameter) / 2;
+                int hoverY = (getHeight() - hoverDiameter) / 2;
+                g2.drawOval(hoverX, hoverY, hoverDiameter, hoverDiameter);
+            }
         }
     }
+
+ 
 }
+
