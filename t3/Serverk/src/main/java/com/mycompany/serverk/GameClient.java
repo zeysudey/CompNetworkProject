@@ -188,12 +188,87 @@ public class GameClient  extends Thread{
                 break;
             case "PLAYER_READY":
                 handlePlayerReady();
-                break;
-            default:
+                case "PLAYER_REPLACED":
+    handlePlayerReplaced(tokens);
+    break;
+case "WAITING_FOR_PLAYER":
+    handleWaitingForPlayer(tokens);
+    break;
+case "GAME_STATUS":
+    handleGameStatus(tokens);
+    break;
+default:
                 System.out.println("Bilinmeyen mesaj: " + messageType);
         }
     }
+    private void handlePlayerReplaced(String[] tokens) {
+    if (tokens.length >= 3) {
+        String newPlayerName = tokens[1];
+        String playerColor = tokens[2];
+        
+        System.out.println("🔄 Yeni oyuncu: " + newPlayerName + " (" + playerColor + ")");
+        
+        SwingUtilities.invokeLater(() -> {
+            if (statusLabel != null) {
+                statusLabel.setText("Yeni Oyuncu: " + newPlayerName + " (" + playerColor + ")");
+                statusLabel.setForeground(Color.BLUE);
+            }
+        });
+    }
+}
+ private void handleWaitingForPlayer(String[] tokens) {
+    // Final olarak tanımla
+    final String finalMessage;
     
+    if (tokens.length > 1) {
+        finalMessage = tokens[1];
+    } else {
+        finalMessage = "Yeni oyuncu bekleniyor...";
+    }
+    
+    System.out.println("⏳ " + finalMessage);
+    
+    SwingUtilities.invokeLater(() -> {
+        if (statusLabel != null) {
+            statusLabel.setText(finalMessage); // Artık final değişken
+            statusLabel.setForeground(Color.ORANGE);
+        }
+        
+        if (zarButton != null) {
+            zarButton.setEnabled(false);
+        }
+    });
+}
+
+/**
+ * Oyun durumu mesajını işler
+ */
+private void handleGameStatus(String[] tokens) {
+    if (tokens.length > 1) {
+        String status = tokens[1];
+        
+        System.out.println("📊 Oyun durumu: " + status);
+        
+        SwingUtilities.invokeLater(() -> {
+            if (statusLabel != null) {
+                switch (status) {
+                    case "STARTED":
+                        statusLabel.setText("Oyun Devam Ediyor");
+                        statusLabel.setForeground(Color.GREEN);
+                        break;
+                    case "WAITING":
+                        statusLabel.setText("Oyun Başlatılacak");
+                        statusLabel.setForeground(Color.YELLOW);
+                        break;
+                    default:
+                        statusLabel.setText("Durum: " + status);
+                        statusLabel.setForeground(Color.GRAY);
+                        break;
+                }
+            }
+        });
+    }
+}
     /**
      * YENİ: Manuel sıra geçme mesajını işler
      */

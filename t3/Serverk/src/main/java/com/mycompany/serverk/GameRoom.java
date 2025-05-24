@@ -1,21 +1,11 @@
-/*
- * Click nbfs://nbhost/SystemFileSystem/Templates/Licenses/license-default.txt to change this license
- * Click nbfs://nbhost/SystemFileSystem/Templates/Classes/Class.java to edit this template
- */
 package com.mycompany.serverk;
 
-/**
- *
- * @author zeysu
- */
 import java.io.IOException;
 import java.util.List;
 import java.util.ArrayList;
 
-
-
 /**
- * İki oyuncu arasındaki oyun odasını yönetir
+ * İki oyuncu arasındaki oyun odasını yönetir - Oyuncu değiştirme özelliği ile
  */
 public class GameRoom {
     private int roomId;
@@ -30,9 +20,13 @@ public class GameRoom {
     private int readyPlayerCount = 0;
     private boolean player1Ready = false;
     private boolean player2Ready = false;
-    private List<Integer> remainingDice = new ArrayList<>(); // O turda kullanılacak zarlar
-    private int movesLeft = 0; // O turda kalan hamle sayısı
-    private List<String> usedPieceDiceCombos = new ArrayList<>(); // Oynanan taş-zar kombinasyonları (her tur için)
+    private List<Integer> remainingDice = new ArrayList<>();
+    private int movesLeft = 0;
+    private List<String> usedPieceDiceCombos = new ArrayList<>();
+    
+    // Oyuncu değiştirme için ek alanlar
+    private boolean waitingForReplacement = false;
+    private GameClient disconnectedPlayer = null;
     
     public GameRoom(int roomId, GameClient player1, GameClient player2, GameServer server) {
         this.roomId = roomId;
@@ -44,12 +38,17 @@ public class GameRoom {
         player1.setGameRoom(this);
         player2.setGameRoom(this);
         
-        // Rastgele renk atama (garantili ve loglu)
+        // Rastgele renk atama
         boolean player1White = Math.random() < 0.5;
         player1.setWhitePlayer(player1White);
         player2.setWhitePlayer(!player1White);
-        System.out.println("[ROOM " + roomId + "] Oda oluşturuldu: " + player1.getPlayerName() + " (ID: " + player1.getPlayerId() + ") ve " + player2.getPlayerName() + " (ID: " + player2.getPlayerId() + ")");
-        System.out.println("[ROOM " + roomId + "] Renkler: " + player1.getPlayerName() + "=" + (player1White ? "BEYAZ" : "SİYAH") + ", " + player2.getPlayerName() + "=" + (!player1White ? "BEYAZ" : "SİYAH"));
+        
+        System.out.println("[ROOM " + roomId + "] Oda oluşturuldu: " + 
+                          player1.getPlayerName() + " (ID: " + player1.getPlayerId() + ") ve " + 
+                          player2.getPlayerName() + " (ID: " + player2.getPlayerId() + ")");
+        System.out.println("[ROOM " + roomId + "] Renkler: " + 
+                          player1.getPlayerName() + "=" + (player1White ? "BEYAZ" : "SİYAH") + ", " + 
+                          player2.getPlayerName() + "=" + (!player1White ? "BEYAZ" : "SİYAH"));
         
         // Beyaz oyuncu başlar
         this.currentPlayer = player1.isWhitePlayer() ? player1 : player2;
@@ -59,6 +58,7 @@ public class GameRoom {
         this.readyPlayerCount = 0;
         this.player1Ready = false;
         this.player2Ready = false;
+        this.waitingForReplacement = false;
         
         System.out.println("🏠 GameRoom oluşturuldu - ID: " + roomId + 
                           " | Player1: " + player1.getPlayerName() + " (" + (player1.isWhitePlayer() ? "BEYAZ" : "SİYAH") + ")" +
@@ -66,34 +66,290 @@ public class GameRoom {
                           " | İlk sıra: " + currentPlayer.getPlayerName());
         
         try {
-            Thread.sleep(500); // Thread'ler başlasın diye bekle
+            Thread.sleep(500);
             String player1Message = "GAME_START#" + player1.getPlayerId() + "," + player2.getPlayerId() + "," + player1.isWhitePlayer();
             String player2Message = "GAME_START#" + player2.getPlayerId() + "," + player1.getPlayerId() + "," + player2.isWhitePlayer();
             player1.sendMessage(player1Message);
             player2.sendMessage(player2Message);
-            System.out.println("[ROOM " + roomId + "] GAME_START gönderildi: " + player1.getPlayerName() + " -> " + player1Message);
-            System.out.println("[ROOM " + roomId + "] GAME_START gönderildi: " + player2.getPlayerName() + " -> " + player2Message);
+            System.out.println("[ROOM " + roomId + "] GAME_START gönderildi");
         } catch (Exception e) {
             System.err.println("[ROOM " + roomId + "] GAME_START gönderilemedi: " + e.getMessage());
         }
     }
     
     /**
-     * Oyunu başlatır -  MESAJ FORMATI DÜZELTİLDİ
+     * YENİ: Bağlantısı kesilen oyuncuyu odadan çıkarır
+     */
+    
+    
+    /**
+     * YENİ: Bağlantısı kesilen oyuncunun yerine yeni oyuncu yerleştirir
+     */
+    
+public synchronized boolean replaceDisconnectedPlayer(GameClient newClient) throws IOException {
+    System.out.println("[ROOM " + roomId + "] Oyuncu değiştirme deneniyor: " + newClient.getPlayerName());
+    
+    if (!waitingForReplacement || disconnectedPlayer == null) {
+        System.out.println("[ROOM " + roomId + "] Oyuncu değişimi gerekli değil");
+        return false;
+    }
+    
+    // ÖNEMLI: Çıkan oyuncunun tam bilgilerini sakla
+    boolean disconnectedPlayerColor = disconnectedPlayer.isWhitePlayer();
+    String oldPlayerName = disconnectedPlayer.getPlayerName();
+    boolean wasPlayer1 = (player1 == null); // Player1 pozisyonu boş mu?
+    
+    System.out.println("[ROOM " + roomId + "] ÇIKAN OYUNCU BİLGİLERİ:");
+    System.out.println("  - İsim: " + oldPlayerName);
+    System.out.println("  - Renk: " + (disconnectedPlayerColor ? "BEYAZ" : "SİYAH"));
+    System.out.println("  - Pozisyon: " + (wasPlayer1 ? "PLAYER1" : "PLAYER2"));
+    
+    // Kalan oyuncuyu bul (değişimden ÖNCE)
+    GameClient remainingPlayer = (player1 != null) ? player1 : player2;
+    
+    if (remainingPlayer != null) {
+        System.out.println("[ROOM " + roomId + "] KALAN OYUNCU:");
+        System.out.println("  - İsim: " + remainingPlayer.getPlayerName());
+        System.out.println("  - Renk: " + (remainingPlayer.isWhitePlayer() ? "BEYAZ" : "SİYAH"));
+        System.out.println("  - ID: " + remainingPlayer.getPlayerId());
+    }
+    
+    // Yeni oyuncuyu AYNI RENGE yerleştir
+    if (wasPlayer1) {
+        player1 = newClient;
+        player1.setWhitePlayer(disconnectedPlayerColor); // AYNI RENK
+        player1Ready = false;
+        System.out.println("[ROOM " + roomId + "] ✅ Player1 değiştirildi: " + oldPlayerName + 
+                          " -> " + newClient.getPlayerName() + " (Renk: " + 
+                          (disconnectedPlayerColor ? "BEYAZ" : "SİYAH") + ")");
+    } else {
+        player2 = newClient;
+        player2.setWhitePlayer(disconnectedPlayerColor); // AYNI RENK
+        player2Ready = false;
+        System.out.println("[ROOM " + roomId + "] ✅ Player2 değiştirildi: " + oldPlayerName + 
+                          " -> " + newClient.getPlayerName() + " (Renk: " + 
+                          (disconnectedPlayerColor ? "BEYAZ" : "SİYAH") + ")");
+    }
+    
+    // Durumu sıfırla
+    newClient.setGameRoom(this);
+    waitingForReplacement = false;
+    
+    System.out.println("[ROOM " + roomId + "] DEĞIŞIM SONRASI DURUM:");
+    if (player1 != null) {
+        System.out.println("  - Player1: " + player1.getPlayerName() + " (" + 
+                          (player1.isWhitePlayer() ? "BEYAZ" : "SİYAH") + ")");
+    }
+    if (player2 != null) {
+        System.out.println("  - Player2: " + player2.getPlayerName() + " (" + 
+                          (player2.isWhitePlayer() ? "BEYAZ" : "SİYAH") + ")");
+    }
+    
+    // ÖNEMLI: currentPlayer'ı doğru ayarla
+    if (!gameStarted) {
+        // Oyun henüz başlamamışsa
+        currentPlayer = null;
+        readyPlayerCount = 1; // Sadece kalan oyuncu hazır
+        
+        System.out.println("[ROOM " + roomId + "] Oyun henüz başlamamış - Normal başlatma süreci");
+        
+        // KALAN OYUNCUYA DOĞRU MESAJ GÖNDER
+        if (remainingPlayer != null && remainingPlayer.isConnected()) {
+            try {
+                // 1. Oyuncunun değiştiğini bildir
+                String replaceMsg = "PLAYER_REPLACED#" + newClient.getPlayerName() + 
+                                   "#" + (disconnectedPlayerColor ? "BEYAZ" : "SİYAH");
+                remainingPlayer.sendMessage(replaceMsg);
+                
+                // 2. Oyunun yeniden başlatılacağını bildir
+                remainingPlayer.sendMessage("GAME_STATUS#WAITING_TO_START");
+                
+                System.out.println("[ROOM " + roomId + "] ✅ Kalan oyuncuya mesajlar gönderildi: " + 
+                                  remainingPlayer.getPlayerName());
+            } catch (IOException e) {
+                System.err.println("[ROOM " + roomId + "] ❌ Kalan oyuncuya mesaj gönderilemedi: " + e.getMessage());
+            }
+        }
+        
+    } else {
+        // Oyun başlamışsa sırayı ayarla
+        if (currentPlayer == null || !currentPlayer.isConnected()) {
+            // Beyaz oyuncu her zaman ilk başlar
+            currentPlayer = (player1 != null && player1.isWhitePlayer()) ? player1 : 
+                           (player2 != null && player2.isWhitePlayer()) ? player2 : player1;
+        }
+        
+        System.out.println("[ROOM " + roomId + "] Oyun devam ediyor - Sıra: " + 
+                          (currentPlayer != null ? currentPlayer.getPlayerName() + 
+                           " (" + (currentPlayer.isWhitePlayer() ? "BEYAZ" : "SİYAH") + ")" : "YOK"));
+        
+        // Kalan oyuncuya oyunun devam ettiğini bildir
+        if (remainingPlayer != null && remainingPlayer.isConnected()) {
+            try {
+                String replaceMsg = "PLAYER_REPLACED#" + newClient.getPlayerName() + 
+                                   "#" + (disconnectedPlayerColor ? "BEYAZ" : "SİYAH");
+                remainingPlayer.sendMessage(replaceMsg);
+                remainingPlayer.sendMessage("GAME_STATUS#RESUMED");
+                
+                System.out.println("[ROOM " + roomId + "] ✅ Kalan oyuncuya devam mesajı gönderildi");
+            } catch (IOException e) {
+                System.err.println("[ROOM " + roomId + "] ❌ Devam mesajı gönderilemedi: " + e.getMessage());
+            }
+        }
+        
+        broadcastTurnMessage();
+    }
+    
+    // Yeni oyuncuya oyun durumunu gönder
+    sendGameStatusToNewPlayer(newClient, remainingPlayer);
+    
+    // ÇİKAN OYUNCU BİLGİSİNİ TEMİZLE
+    disconnectedPlayer = null;
+    
+    System.out.println("[ROOM " + roomId + "] ✅ Oyuncu değişimi tamamlandı!");
+    return true;
+} 
+/**
+ * DÜZELTME: sendGameStatusToNewPlayer metodunu geliştir
+ */
+private void sendGameStatusToNewPlayer(GameClient newPlayer, GameClient otherPlayer) throws IOException {
+    System.out.println("[ROOM " + roomId + "] Yeni oyuncuya durum bilgisi gönderiliyor: " + 
+                      newPlayer.getPlayerName() + " (Oyun başladı: " + gameStarted + ")");
+    
+    // Her durumda GAME_START mesajı gönder
+    if (otherPlayer != null) {
+        String gameStartMsg = "GAME_START#" + newPlayer.getPlayerId() + "," + 
+                             otherPlayer.getPlayerId() + "," + newPlayer.isWhitePlayer();
+        newPlayer.sendMessage(gameStartMsg);
+        System.out.println("[ROOM " + roomId + "] GAME_START gönderildi: " + gameStartMsg);
+    }
+    
+    // Renk doğrulama
+    String colorConfirmMsg = "COLOR_CONFIRM#" + (newPlayer.isWhitePlayer() ? "BEYAZ" : "SİYAH");
+    newPlayer.sendMessage(colorConfirmMsg);
+    
+    if (gameStarted) {
+        // Oyun başlamışsa devam durumu
+        newPlayer.sendMessage("GAME_STATUS#STARTED");
+        
+        if (currentPlayer != null) {
+            String turnMsg = "TURN#" + currentPlayer.getPlayerId();
+            newPlayer.sendMessage(turnMsg);
+            System.out.println("[ROOM " + roomId + "] TURN mesajı gönderildi: " + turnMsg);
+        }
+        
+        if (diceRolled) {
+            String diceMsg = "DICE_ROLL#" + lastDiceRoll[0] + "#" + lastDiceRoll[1];
+            newPlayer.sendMessage(diceMsg);
+        }
+    } else {
+        // Oyun henüz başlamamışsa bekle durumu
+        newPlayer.sendMessage("GAME_STATUS#WAITING_TO_START");
+        System.out.println("[ROOM " + roomId + "] GAME_STATUS#WAITING_TO_START gönderildi");
+    }
+    
+    System.out.println("[ROOM " + roomId + "] ✅ Durum bilgisi gönderildi");
+}
+
+/**
+ * DÜZELTME: removePlayer metodunu geliştir
+ */
+public synchronized void removePlayer(GameClient client) {
+    System.out.println("[ROOM " + roomId + "] Oyuncu çıkarılıyor: " + client.getPlayerName() + 
+                      " (Renk: " + (client.isWhitePlayer() ? "BEYAZ" : "SİYAH") + ")");
+    System.out.println("[ROOM " + roomId + "] Çıkarma öncesi durum - Oyun başladı: " + gameStarted + 
+                      ", Zar atıldı: " + diceRolled + ", Hazır oyuncu: " + readyPlayerCount);
+    
+    // Çıkan oyuncunun bilgilerini kaydet
+    disconnectedPlayer = client;
+    boolean wasPlayer1 = (client == player1);
+    
+    if (wasPlayer1) {
+        player1 = null;
+        player1Ready = false;
+        System.out.println("[ROOM " + roomId + "] Player1 çıkarıldı");
+    } else if (client == player2) {
+        player2 = null;
+        player2Ready = false;
+        System.out.println("[ROOM " + roomId + "] Player2 çıkarıldı");
+    }
+    
+    readyPlayerCount = Math.max(0, readyPlayerCount - 1);
+    waitingForReplacement = true;
+    
+    // ÖNEMLİ: Eğer oyun henüz gerçekten başlamamışsa (zar atılmamışsa), oyunu sıfırla
+    if (gameStarted && !diceRolled) {
+        System.out.println("[ROOM " + roomId + "] OYUN SIFIRLANIYOR - Henüz zar atılmadı");
+        gameStarted = false;  // Oyunu geri al
+        currentPlayer = null; // Sırayı sıfırla
+        
+        // Kalan oyuncuya durumu bildir
+        GameClient remainingPlayer = (player1 != null) ? player1 : player2;
+        if (remainingPlayer != null && remainingPlayer.isConnected()) {
+            try {
+                remainingPlayer.sendMessage("GAME_STATUS#RESET");
+                System.out.println("[ROOM " + roomId + "] Oyun sıfırlama mesajı gönderildi");
+            } catch (IOException e) {
+                System.err.println("[ROOM " + roomId + "] Oyun sıfırlama mesajı gönderilemedi: " + e.getMessage());
+            }
+        }
+    }
+    
+    // currentPlayer referansını kontrol et
+    if (currentPlayer == client) {
+        GameClient remainingPlayer = (player1 != null) ? player1 : player2;
+        currentPlayer = remainingPlayer;
+        System.out.println("[ROOM " + roomId + "] Sıra güncellendi: " + 
+                          (currentPlayer != null ? currentPlayer.getPlayerName() : "YOK"));
+    }
+    
+    System.out.println("[ROOM " + roomId + "] Çıkarma sonrası durum - Oyun başladı: " + gameStarted + 
+                      ", Beklenen değişim: " + waitingForReplacement);
+}
+
+    
+    /**
+     * YENİ: Bağlı oyuncu sayısını döndürür
+     */
+    public int getConnectedPlayerCount() {
+        int count = 0;
+        if (player1 != null && player1.isConnected()) count++;
+        if (player2 != null && player2.isConnected()) count++;
+        return count;
+    }
+    
+    /**
+     * YENİ: Oda oyuncu değişimi bekliyor mu?
+     */
+    public boolean isWaitingForReplacement() {
+        return waitingForReplacement;
+    }
+    
+    /**
+     * Oyunu başlatır - MESAJ FORMATI DÜZELTİLDİ
      */
     public void startGame() throws IOException {
         if (gameStarted) {
-            System.out.println(" Oyun zaten başlamış");
+            System.out.println("⚠️ Oyun zaten başlamış");
             return;
         }
+        
+        // Her iki oyuncu da mevcut ve bağlı mı kontrol et
+        if (player1 == null || player2 == null || !player1.isConnected() || !player2.isConnected()) {
+            System.out.println("⚠️ Oyun başlatılamadı - Eksik veya bağlantısız oyuncu");
+            return;
+        }
+        
         gameStarted = true;
         this.currentPlayer = player1.isWhitePlayer() ? player1 : player2;
         this.diceRolled = false;
+        
         System.out.println("\n=== 🎮 OYUN BAŞLATILIYOR ===");
         System.out.println("Player1: " + player1.getPlayerName() + " (ID: " + player1.getPlayerId() + ", Renk: " + (player1.isWhitePlayer() ? "BEYAZ" : "SİYAH") + ")");
         System.out.println("Player2: " + player2.getPlayerName() + " (ID: " + player2.getPlayerId() + ", Renk: " + (player2.isWhitePlayer() ? "BEYAZ" : "SİYAH") + ")");
         System.out.println("İlk sıra: " + currentPlayer.getPlayerName() + " (ID: " + currentPlayer.getPlayerId() + ")");
-        // Sadece ilk TURN mesajı gönder
+        
+        // İlk TURN mesajı gönder
         String turnMsg = "TURN#" + currentPlayer.getPlayerId();
         broadcastMessage(turnMsg);
         System.out.println("İlk TURN mesajı gönderildi: " + turnMsg);
@@ -114,25 +370,31 @@ public class GameRoom {
      */
     public synchronized void rollDice(GameClient player) throws IOException {
         if (gameEnded) {
-            System.out.println(" Zar atma reddedildi - Oyun bitti");
+            System.out.println("⚠️ Zar atma reddedildi - Oyun bitti");
             return;
         }
         if (!gameStarted) {
-            System.out.println(" Zar atma reddedildi - Oyun başlamamış");
+            System.out.println("⚠️ Zar atma reddedildi - Oyun başlamamış");
+            return;
+        }
+        if (waitingForReplacement) {
+            System.out.println("⚠️ Zar atma reddedildi - Oyuncu değişimi bekleniyor");
             return;
         }
         if (!isPlayerTurn(player)) {
-            System.out.println(" Zar atma reddedildi - Sıra yok: " + player.getPlayerName());
+            System.out.println("⚠️ Zar atma reddedildi - Sıra yok: " + player.getPlayerName());
             return;
         }
         if (diceRolled) {
-            System.out.println(" Zar atma reddedildi - Zar zaten atılmış: " + player.getPlayerName());
+            System.out.println("⚠️ Zar atma reddedildi - Zar zaten atılmış: " + player.getPlayerName());
             return;
         }
+        
         int[] dice = server.rollDice();
         lastDiceRoll[0] = dice[0];
         lastDiceRoll[1] = dice[1];
         diceRolled = true;
+        
         // Zar ve hamle hakkı ayarla
         remainingDice.clear();
         if (dice[0] == dice[1]) {
@@ -144,9 +406,10 @@ public class GameRoom {
             remainingDice.add(dice[1]);
             movesLeft = 2;
         }
+        
         String diceMessage = "DICE_ROLL#" + dice[0] + "#" + dice[1];
         broadcastMessage(diceMessage);
-        System.out.println(" Zar atıldı ve gönderildi: " + dice[0] + "," + dice[1] + " - Oyuncu: " + player.getPlayerName());
+        System.out.println("🎲 Zar atıldı ve gönderildi: " + dice[0] + "," + dice[1] + " - Oyuncu: " + player.getPlayerName());
     }
     
     /**
@@ -155,18 +418,23 @@ public class GameRoom {
     public synchronized void makeMove(GameClient player, int from, int to) throws IOException {
         if (gameEnded) return;
         if (!gameStarted) return;
+        if (waitingForReplacement) {
+            System.out.println("⚠️ Hamle reddedildi - Oyuncu değişimi bekleniyor");
+            return;
+        }
         if (!isPlayerTurn(player)) {
-            System.out.println(" Hamle reddedildi - Sıra yok: " + player.getPlayerName());
+            System.out.println("⚠️ Hamle reddedildi - Sıra yok: " + player.getPlayerName());
             return;
         }
         if (!diceRolled) {
-            System.out.println(" Hamle reddedildi - Zar atılmamış: " + player.getPlayerName());
+            System.out.println("⚠️ Hamle reddedildi - Zar atılmamış: " + player.getPlayerName());
             return;
         }
         if (!isValidMove(player, from, to)) {
-            System.out.println(" Hamle reddedildi - Geçersiz hamle");
+            System.out.println("⚠️ Hamle reddedildi - Geçersiz hamle");
             return;
         }
+        
         // Zar ile uyumlu hamle kontrolü
         int moveDistance = Math.abs(to - from);
         boolean valid = false;
@@ -178,26 +446,30 @@ public class GameRoom {
                 break;
             }
         }
+        
         if (!valid) {
-            System.out.println(" Hamle reddedildi - Zar ile uyumsuz hamle: " + moveDistance);
+            System.out.println("⚠️ Hamle reddedildi - Zar ile uyumsuz hamle: " + moveDistance);
             if (player != null) player.sendMessage("ERROR#Hamle zar ile uyumlu değil! (" + moveDistance + ")");
             return;
         }
+        
         // Aynı taş-zar kombinasyonu daha önce kullanıldı mı?
         String comboKey = from + ":" + moveDistance;
         if (usedPieceDiceCombos.contains(comboKey)) {
-            System.out.println(" Hamle reddedildi - Bu taş ve zar kombinasyonu zaten kullanıldı: " + comboKey);
+            System.out.println("⚠️ Hamle reddedildi - Bu taş ve zar kombinasyonu zaten kullanıldı: " + comboKey);
             if (player != null) player.sendMessage("ERROR#Bu taş ve zar kombinasyonu zaten kullanıldı!");
             return;
         }
+        
         usedPieceDiceCombos.add(comboKey);
+        
         // Zar kullanıldı, listeden çıkar
         remainingDice.remove(usedDie);
         movesLeft--;
+        
         String moveMessage = "PIECE_MOVE#" + player.getPlayerId() + "," + from + "," + to;
         broadcastMessage(moveMessage);
-        System.out.println(" Hamle yapıldı: " + player.getPlayerName() + " (" + from + " → " + to + ") | Kalan hamle: " + movesLeft);
-        // NOT: Sıra manuel olarak geçilecek, otomatik değişmeyecek
+        System.out.println("♟️ Hamle yapıldı: " + player.getPlayerName() + " (" + from + " → " + to + ") | Kalan hamle: " + movesLeft);
     }
     
     /**
@@ -206,34 +478,40 @@ public class GameRoom {
     public synchronized void passTurn() throws IOException {
         if (gameEnded) return;
         if (!gameStarted) return;
-        if (!diceRolled) {
-            System.out.println(" Sıra geçilemedi - Zar atılmamış");
+        if (waitingForReplacement) {
+            System.out.println("⚠️ Sıra geçilemedi - Oyuncu değişimi bekleniyor");
             return;
         }
+        if (!diceRolled) {
+            System.out.println("⚠️ Sıra geçilemedi - Zar atılmamış");
+            return;
+        }
+        
         // Sırayı diğer oyuncuya geçir
         currentPlayer = (currentPlayer == player1) ? player2 : player1;
         diceRolled = false;
         remainingDice.clear();
         movesLeft = 0;
-        usedPieceDiceCombos.clear(); // Sıra değişince temizle
+        usedPieceDiceCombos.clear();
+        
         broadcastTurnMessage();
-        System.out.println(" Sıra geçildi: " + currentPlayer.getPlayerName());
+        System.out.println("🔄 Sıra geçildi: " + currentPlayer.getPlayerName());
     }
     
     /**
      * Oyuncunun sırası olup olmadığını kontrol eder
      */
     public boolean isPlayerTurn(GameClient player) {
-        if (player == null || currentPlayer == null || !gameStarted || gameEnded) {
-            System.out.println(" Sıra kontrolü BAŞARISIZ - Null kontrol veya oyun durumu");
+        if (player == null || currentPlayer == null || !gameStarted || gameEnded || waitingForReplacement) {
+            System.out.println("⚠️ Sıra kontrolü BAŞARISIZ - Null kontrol, oyun durumu veya oyuncu değişimi");
             return false;
         }
         
         boolean isTurn = player.getPlayerId() == currentPlayer.getPlayerId();
         
-        System.out.println(" Sıra kontrolü - Oyuncu: " + player.getPlayerName() + " (ID: " + player.getPlayerId() + ")" +
+        System.out.println("🔍 Sıra kontrolü - Oyuncu: " + player.getPlayerName() + " (ID: " + player.getPlayerId() + ")" +
                           " | Mevcut sıra: " + currentPlayer.getPlayerName() + " (ID: " + currentPlayer.getPlayerId() + ")" + 
-                          " | Sonuç: " + (isTurn ? " VAR" : " YOK"));
+                          " | Sonuç: " + (isTurn ? "✅ VAR" : "❌ YOK"));
         
         return isTurn;
     }
@@ -244,55 +522,59 @@ public class GameRoom {
     public boolean isValidMove(GameClient player, int fromTriangle, int toTriangle) {
         // Sıra kontrolü
         if (!isPlayerTurn(player)) {
-            System.out.println(" Geçersiz hamle - Sıra yok: " + player.getPlayerName());
+            System.out.println("⚠️ Geçersiz hamle - Sıra yok: " + player.getPlayerName());
             return false;
         }
+        
         // Zar kontrolü
         if (!diceRolled) {
-            System.out.println(" Geçersiz hamle - Zar atılmamış: " + player.getPlayerName());
+            System.out.println("⚠️ Geçersiz hamle - Zar atılmamış: " + player.getPlayerName());
             return false;
         }
+        
         // Koordinat kontrolü
         if (fromTriangle < -1 || fromTriangle > 25 || toTriangle < -1 || toTriangle > 25) {
-            System.out.println(" Geçersiz hamle - Koordinat hatası: " + fromTriangle + " → " + toTriangle);
+            System.out.println("⚠️ Geçersiz hamle - Koordinat hatası: " + fromTriangle + " → " + toTriangle);
             return false;
         }
-        // --- YÖN KONTROLÜ EKLENDİ ---
+        
+        // Yön kontrolü
         int direction = getPieceDirection(player.isWhitePlayer());
         if ((toTriangle - fromTriangle) * direction <= 0) {
-            System.out.println(" Geçersiz hamle - Yanlış yön: " + fromTriangle + " → " + toTriangle);
+            System.out.println("⚠️ Geçersiz hamle - Yanlış yön: " + fromTriangle + " → " + toTriangle);
             return false;
         }
-        System.out.println(" Hamle geçerli: " + player.getPlayerName() + " (" + fromTriangle + " → " + toTriangle + ")");
+        
+        System.out.println("✅ Hamle geçerli: " + player.getPlayerName() + " (" + fromTriangle + " → " + toTriangle + ")");
         return true;
     }
     
     /**
-     * Mesaj yayınla
+     * Mesaj yayınla - GELİŞTİRİLDİ
      */
     public void broadcastMessage(String message) throws IOException {
-        System.out.println(" BROADCAST: " + message);
+        System.out.println("📢 BROADCAST: " + message);
         
         if (player1 != null && player1.isConnected()) {
             try {
                 player1.sendMessage(message);
-                System.out.println("   " + player1.getPlayerName() + " (ID: " + player1.getPlayerId() + ") - gönderildi");
+                System.out.println("   ✅ " + player1.getPlayerName() + " (ID: " + player1.getPlayerId() + ") - gönderildi");
             } catch (IOException e) {
-                System.out.println("   " + player1.getPlayerName() + " - mesaj gönderilemedi: " + e.getMessage());
+                System.out.println("   ❌ " + player1.getPlayerName() + " - mesaj gönderilemedi: " + e.getMessage());
             }
         } else {
-            System.out.println("   " + (player1 != null ? player1.getPlayerName() : "Player1") + " - bağlantısız");
+            System.out.println("   ⏸️ " + (player1 != null ? player1.getPlayerName() : "Player1") + " - bağlantısız");
         }
         
         if (player2 != null && player2.isConnected()) {
             try {
                 player2.sendMessage(message);
-                System.out.println("   " + player2.getPlayerName() + " (ID: " + player2.getPlayerId() + ") - gönderildi");
+                System.out.println("   ✅ " + player2.getPlayerName() + " (ID: " + player2.getPlayerId() + ") - gönderildi");
             } catch (IOException e) {
-                System.out.println("   " + player2.getPlayerName() + " - mesaj gönderilemedi: " + e.getMessage());
+                System.out.println("   ❌ " + player2.getPlayerName() + " - mesaj gönderilemedi: " + e.getMessage());
             }
         } else {
-            System.out.println("   " + (player2 != null ? player2.getPlayerName() : "Player2") + " - bağlantısız");
+            System.out.println("   ⏸️ " + (player2 != null ? player2.getPlayerName() : "Player2") + " - bağlantısız");
         }
     }
     
@@ -305,15 +587,21 @@ public class GameRoom {
             String endMsg = "GAME_END#" + reason;
             broadcastMessage(endMsg);
             
-            System.out.println(" Oyun bitti - Oda: " + roomId + " | Sebep: " + reason);
+            System.out.println("🏁 Oyun bitti - Oda: " + roomId + " | Sebep: " + reason);
         }
     }
     
     /**
-     * Oyuncu hazır olduğunu bildirir
+     * Oyuncu hazır olduğunu bildirir - GELİŞTİRİLDİ
      */
     public synchronized void playerReady(GameClient player) throws IOException, InterruptedException {
         System.out.println("[ROOM " + roomId + "] playerReady çağrıldı: " + player.getPlayerName());
+        
+        if (waitingForReplacement) {
+            System.out.println("[ROOM " + roomId + "] Oyuncu hazır - Oyuncu değişimi beklendiği için bekletiliyor");
+            return;
+        }
+        
         if (player == player1 && !player1Ready) {
             player1Ready = true;
             readyPlayerCount++;
@@ -326,7 +614,8 @@ public class GameRoom {
             System.out.println("[ROOM " + roomId + "] Bu oyuncu zaten hazır: " + player.getPlayerName());
             return;
         }
-        if (readyPlayerCount >= 2 && !gameStarted) {
+        
+        if (readyPlayerCount >= 2 && !gameStarted && player1 != null && player2 != null) {
             System.out.println("[ROOM " + roomId + "] İki oyuncu da hazır - Oyun başlatılıyor!");
             Thread.sleep(1000);
             startGame();
@@ -338,13 +627,15 @@ public class GameRoom {
     }
     
     /**
-     * Debug için oda durumunu yazdır
+     * Debug için oda durumunu yazdır - GELİŞTİRİLDİ
      */
     public void printRoomStatus() {
         System.out.println("=== ODA DURUMU: " + roomId + " ===");
         System.out.println("Oyun Başladı: " + (gameStarted ? "EVET" : "HAYIR"));
         System.out.println("Oyun Bitti: " + (gameEnded ? "EVET" : "HAYIR"));
+        System.out.println("Oyuncu Değişimi Bekliyor: " + (waitingForReplacement ? "EVET" : "HAYIR"));
         System.out.println("Hazır Oyuncu: " + readyPlayerCount + "/2");
+        System.out.println("Bağlı Oyuncu: " + getConnectedPlayerCount() + "/2");
         System.out.println("Zar Atıldı: " + (diceRolled ? "EVET (" + lastDiceRoll[0] + "," + lastDiceRoll[1] + ")" : "HAYIR"));
         
         if (currentPlayer != null) {
@@ -357,14 +648,21 @@ public class GameRoom {
         if (player1 != null) {
             System.out.println("  Player1: " + player1.getPlayerName() + 
                              " (ID: " + player1.getPlayerId() + ", " + (player1.isWhitePlayer() ? "BEYAZ" : "SİYAH") + 
-                             ", Bağlantı: " + (player1.isConnected() ? "AKTİF" : "KESİK") + ")");
+                             ", Bağlantı: " + (player1.isConnected() ? "AKTİF" : "KESİK") + 
+                             ", Hazır: " + (player1Ready ? "EVET" : "HAYIR") + ")");
+        } else {
+            System.out.println("  Player1: YOK");
         }
         
         if (player2 != null) {
             System.out.println("  Player2: " + player2.getPlayerName() + 
                              " (ID: " + player2.getPlayerId() + ", " + (player2.isWhitePlayer() ? "BEYAZ" : "SİYAH") + 
-                             ", Bağlantı: " + (player2.isConnected() ? "AKTİF" : "KESİK") + ")");
+                             ", Bağlantı: " + (player2.isConnected() ? "AKTİF" : "KESİK") + 
+                             ", Hazır: " + (player2Ready ? "EVET" : "HAYIR") + ")");
+        } else {
+            System.out.println("  Player2: YOK");
         }
+        
         System.out.println("==========================");
     }
     
@@ -382,9 +680,8 @@ public class GameRoom {
         this.diceRolled = true; 
     }
     
-    // --- YÖN FONKSİYONU EKLENDİ ---
+    // Yön fonksiyonu
     public int getPieceDirection(boolean isWhite) {
         return isWhite ? 1 : -1;
     }
-    
 }

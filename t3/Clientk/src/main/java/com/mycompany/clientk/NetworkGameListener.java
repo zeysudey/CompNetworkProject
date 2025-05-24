@@ -23,7 +23,21 @@ public interface NetworkGameListener {
      * @param isWhitePlayer Bu oyuncu beyaz mı?
      */
     void onGameStart(int player1Id, int player2Id, boolean isWhitePlayer);
+    /**
+     * Renk doğrulandığında çağrılır
+     */
+    default void onColorConfirmed(String colorName, boolean isWhite) {
+        onError("Renginiz: " + colorName);
+    }
     
+    /**
+     * Sunucu kapandığında çağrılır
+     * @param reason
+     * @param reason
+     */
+    default void onServerShutdown(String reason) {
+        onError("Sunucu kapandı: " + reason);
+    }
     /**
      * Zar atıldığında çağrılır
      * @param dice1 Birinci zar
@@ -62,4 +76,19 @@ public interface NetworkGameListener {
      * @param error Hata mesajı
      */
     void onError(String error);
+    void onPlayerReplaced(String newPlayerName, String playerColor);
+
+/**
+ * Yeni oyuncu beklendiğinde çağrılır
+ */
+void onWaitingForPlayer(String message);
+
+/**
+ * Oyun durumu güncellendiğinde çağrılır
+ */
+void onGameStatus(String status);
+
+/**
+ * Sunucu kapandığında çağrılır
+ */
 }

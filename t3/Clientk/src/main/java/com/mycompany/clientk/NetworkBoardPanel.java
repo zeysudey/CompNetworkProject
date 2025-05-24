@@ -304,7 +304,7 @@ public class NetworkBoardPanel extends javax.swing.JPanel {
     }
 
     /**
-     * Zar değerlerini ayarlar - DÜZELTİLDİ
+     * Zar değerlerini ayarlar - ZAR BÖLME SİSTEMİ İLE GELİŞTİRİLDİ
      */
     public void setDiceValues(int die1, int die2) {
         this.diceValues[0] = die1;
@@ -362,9 +362,13 @@ public class NetworkBoardPanel extends javax.swing.JPanel {
     }
 
     /**
-     * Hangi zarla hamle yapılacağını hesaplar - DÜZELTİLDİ
+     * Hangi zarla hamle yapılacağını hesaplar - ZAR BÖLME SİSTEMİ İLE GELİŞTİRİLDİ
      */
     private int calculateRequiredDice(int fromTriangle, int toTriangle, Color pieceColor) {
+        int requiredDistance = Math.abs(toTriangle - fromTriangle);
+        
+        System.out.println("🎯 Hamle mesafesi: " + requiredDistance + ", Mevcut zarlar: " + availableDice);
+        
         // ÇIKARMA HAMLESİ
         if (toTriangle == WHITE_HOME_INDEX || toTriangle == BLACK_HOME_INDEX) {
             int exactDistance;
@@ -385,10 +389,9 @@ public class NetworkBoardPanel extends javax.swing.JPanel {
                     return dice;
                 }
             }
-        } // NORMAL HAMLE
+        } 
+        // NORMAL HAMLE - ZAR BÖLME İLE
         else {
-            int requiredDice = Math.abs(toTriangle - fromTriangle);
-
             // Hareket yönü kontrolü
             boolean correctDirection = false;
             if (pieceColor == Color.WHITE) {
@@ -399,11 +402,13 @@ public class NetworkBoardPanel extends javax.swing.JPanel {
                 correctDirection = (toTriangle < fromTriangle);
             }
 
-            if (correctDirection && availableDice.contains(requiredDice)) {
-                return requiredDice;
+            if (correctDirection && availableDice.contains(requiredDistance)) {
+                System.out.println("✅ Zar bulundu: " + requiredDistance);
+                return requiredDistance;
             }
         }
 
+        System.out.println("❌ Uygun zar bulunamadı");
         return -1; // Geçersiz hamle
     }
 
@@ -425,7 +430,7 @@ public class NetworkBoardPanel extends javax.swing.JPanel {
     }
 
     /**
-     * Geçerli hamleleri günceller - DÜZELTİLDİ
+     * Geçerli hamleleri günceller - ZAR BÖLME SİSTEMİ İLE GELİŞTİRİLDİ
      */
     public void updateLegalMoves(NetworkTaslabel piece) {
         legalMoves.clear();
@@ -445,16 +450,19 @@ public class NetworkBoardPanel extends javax.swing.JPanel {
 
         System.out.println("🔍 Hamle hesaplıyor: Taş=" + pieceColor + ", Konum=" + currentTriangle + ", Zarlar=" + availableDice);
 
+        // Her zar değeri için kontrol et (zar bölme sistemi)
         for (int diceValue : availableDice) {
             int targetTriangle = currentTriangle + (diceValue * direction);
             System.out.println("  🎯 Zar " + diceValue + " için hedef: " + targetTriangle + " (yön: " + direction + ")");
-            // Normal hamle kontrolü
+            
+            // Normal hamle kontrolü (0-23 arası)
             if (targetTriangle >= 0 && targetTriangle < 24) {
                 boolean validDir = isMoveDirectionValid(piece, currentTriangle, targetTriangle);
                 boolean validMove = isValidMove(targetTriangle, pieceColor);
-                if (validDir && validMove) {
+                
+                if (validDir && validMove && !legalMoves.contains(targetTriangle)) {
                     legalMoves.add(targetTriangle);
-                    System.out.println("    ✅ Geçerli hamle: " + currentTriangle + " → " + targetTriangle);
+                    System.out.println("    ✅ Geçerli hamle: " + currentTriangle + " → " + targetTriangle + " (zar: " + diceValue + ")");
                 } else {
                     if (!validDir) {
                         System.out.println("    ❌ Geçersiz yön: " + currentTriangle + " → " + targetTriangle);
@@ -468,13 +476,18 @@ public class NetworkBoardPanel extends javax.swing.JPanel {
                         }
                     }
                 }
-            } // Çıkış (bear off) kontrolü
+            } 
+            // Çıkış (bear off) kontrolü
             else if (pieceColor == Color.WHITE && targetTriangle >= 24 && allPiecesInHome(pieceColor)) {
-                legalMoves.add(WHITE_HOME_INDEX);
-                System.out.println("    ✅ Beyaz çıkarma: " + currentTriangle + " → HOME");
+                if (!legalMoves.contains(WHITE_HOME_INDEX)) {
+                    legalMoves.add(WHITE_HOME_INDEX);
+                    System.out.println("    ✅ Beyaz çıkarma: " + currentTriangle + " → HOME (zar: " + diceValue + ")");
+                }
             } else if (pieceColor == Color.BLACK && targetTriangle < 0 && allPiecesInHome(pieceColor)) {
-                legalMoves.add(BLACK_HOME_INDEX);
-                System.out.println("    ✅ Siyah çıkarma: " + currentTriangle + " → HOME");
+                if (!legalMoves.contains(BLACK_HOME_INDEX)) {
+                    legalMoves.add(BLACK_HOME_INDEX);
+                    System.out.println("    ✅ Siyah çıkarma: " + currentTriangle + " → HOME (zar: " + diceValue + ")");
+                }
             } else {
                 System.out.println("    ❌ Çıkarma koşulları sağlanmıyor");
             }
@@ -717,7 +730,7 @@ public class NetworkBoardPanel extends javax.swing.JPanel {
     }
 
     /**
-     * Görsel feedback için hover efektleri - YENİ
+     * Görsel feedback için hover efektleri - ZAR BÖLME SİSTEMİ İLE GELİŞTİRİLMİŞ
      */
     @Override
     protected void paintComponent(Graphics g) {
@@ -799,28 +812,37 @@ public class NetworkBoardPanel extends javax.swing.JPanel {
         g.setColor(Color.WHITE);
         g.drawString(String.valueOf(blackHome.size()), 40, 340);
 
-        // ZAR DURUMU GÖSTERGESİ
+        // ========== ZAR BÖLME SİSTEMİ - GELİŞTİRİLMİŞ GÖRSEL GÖSTERIM ==========
         g.setColor(Color.BLACK);
         g.setFont(new Font("Arial", Font.BOLD, 12));
 
-        String diceStatus = "Kalan zarlar: ";
+        String diceStatus = "Kullanılabilir hareketler: ";
         if (isDoubleRoll) {
             diceStatus += diceValues[0] + " x" + availableDice.size() + " (çift)";
         } else {
+            // Zar bölme bilgisi göster
             diceStatus += availableDice.toString();
         }
 
         g.drawString(diceStatus, 200, 30);
 
+        // Zar bölme açıklaması
+        if (!isDoubleRoll && availableDice.size() > 2) {
+            g.setFont(new Font("Arial", Font.PLAIN, 10));
+            g.setColor(Color.BLUE);
+            g.drawString("💡 Zarınızı bölebilirsiniz! Örnek: 6 = 4+2, 3+3, 5+1 vb.", 200, 80);
+        }
+
         // DETAYLI BİLGİ
         g.setFont(new Font("Arial", Font.PLAIN, 10));
-        g.drawString("Zar değerleri: " + diceValues[0] + ", " + diceValues[1], 200, 45);
+        g.setColor(Color.BLACK);
+        g.drawString("Orijinal zarlar: " + diceValues[0] + ", " + diceValues[1], 200, 45);
 
         // HAMLE HAKKI GÖSTERGESİ
         if (isMyTurn && !availableDice.isEmpty()) {
             g.setColor(Color.BLUE);
             g.setFont(new Font("Arial", Font.BOLD, 12));
-            g.drawString("Hamle yapabilirsiniz! (" + availableDice.size() + " hamle kaldı)", 200, 65);
+            g.drawString("Hamle yapabilirsiniz! (" + availableDice.size() + " seçenek)", 200, 65);
         } else if (isMyTurn && availableDice.isEmpty()) {
             g.setColor(Color.RED);
             g.setFont(new Font("Arial", Font.BOLD, 12));
@@ -1100,23 +1122,54 @@ public class NetworkBoardPanel extends javax.swing.JPanel {
     }
 
     /**
-     * Zar atıldığında kullanılabilir zarları ayarlar
+     * ========== ZAR BÖLME SİSTEMİ - ANA METOT ==========
+     * Zar atıldığında kullanılabilir zarları ayarlar - ZAR BÖLME SİSTEMİ İLE GELİŞTİRİLDİ
      */
     public void setAvailableDice(int die1, int die2) {
         availableDice.clear();
+        
         if (die1 == die2) {
+            // Çift zar: 4 kez aynı değer
             for (int i = 0; i < 4; i++) {
                 availableDice.add(die1);
             }
             isDoubleRoll = true;
             doubleRollCount = 4;
         } else {
-            availableDice.add(die1);
-            availableDice.add(die2);
+            // Normal zar: Her zar değeri için 1-6 arası tüm kombinasyonlar
+            addAllPossibleMoves(die1, die2);
             isDoubleRoll = false;
             doubleRollCount = 2;
         }
+        
+        System.out.println("🎲 Kullanılabilir zar kombinasyonları: " + availableDice);
         repaint();
+    }
+
+    /**
+     * Tüm olası hamle kombinasyonlarını ekler - ZAR BÖLME SİSTEMİ
+     */
+    private void addAllPossibleMoves(int die1, int die2) {
+        // Tek tek zarlar
+        availableDice.add(die1);
+        availableDice.add(die2);
+        
+        // Toplam zar (eğer tek hamlede kullanılabilirse)
+        availableDice.add(die1 + die2);
+        
+        // ZAR BÖLME: Büyük zarın küçük parçaları
+        int bigDie = Math.max(die1, die2);
+        int smallDie = Math.min(die1, die2);
+        
+        // Büyük zarı böl
+        for (int i = 1; i < bigDie; i++) {
+            availableDice.add(i); // 1, 2, 3, 4, 5 (6'lık zar için)
+            if (bigDie - i <= 6) {
+                availableDice.add(bigDie - i); // Kalan kısım
+            }
+        }
+        
+        System.out.println("🎲 Zar bölme aktif: " + die1 + "+" + die2 + " = " + availableDice);
     }
 
     /**
@@ -1139,9 +1192,10 @@ public class NetworkBoardPanel extends javax.swing.JPanel {
                     if (piece.getTasRenk() == Color.BLACK) {
                         return false;
                     }
-                }
-            }
+   }
+    }
         }
-        return true;
+                return true;
+
     }
 }

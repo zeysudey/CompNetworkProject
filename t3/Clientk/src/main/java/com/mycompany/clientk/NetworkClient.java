@@ -160,12 +160,116 @@ private Socket socket;
                     gameListener.onError(tokens[1]);
                 }
                 break;
+              case "PLAYER_REPLACED":
+    if (tokens.length >= 3) {
+        handlePlayerReplaced(tokens[1], tokens[2]);
+    }
+    break;
+              case "COLOR_CONFIRM":
+    if (tokens.length >= 2) {
+        handleColorConfirmation(tokens[1]);
+    }
+    break;
+case "WAITING_FOR_PLAYER":
+    if (tokens.length >= 2) {
+        handleWaitingForPlayer(tokens[1]);
+    } else {
+        handleWaitingForPlayer("Yeni oyuncu bekleniyor...");
+    }
+    break;
+case "GAME_STATUS":
+    if (tokens.length >= 2) {
+        handleGameStatus(tokens[1]);
+    }
+    break;
+case "SERVER_SHUTDOWN":
+    if (tokens.length >= 2) {
+        handleServerShutdown(tokens[1]);
+    }
+    break;  
             default:
                 System.out.println("❓ Bilinmeyen mesaj tipi: " + messageType);
         }
     }
+   private void handleColorConfirmation(String color) {
+    System.out.println("🎨 Renk doğrulandı: " + color);
     
-    /**
+    // Renk bilgisini client'ta da güncelle
+    boolean isWhite = color.equals("BEYAZ");
+    this.isWhitePlayer = isWhite;
+    
+    if (gameListener != null) {
+        try {
+            // Eğer bu metod varsa çağır
+            gameListener.onColorConfirmed(color, isWhite);
+        } catch (Exception e) {
+            // Yoksa basit error mesajı ile bilgilendir
+            gameListener.onError("Renginiz: " + color);
+        }
+    }
+    
+    System.out.println("✅ Client renk bilgisi güncellendi: " + 
+                      (this.isWhitePlayer ? "BEYAZ" : "SİYAH"));
+}
+ public String getPlayerColorString() {
+    return isWhitePlayer ? "BEYAZ" : "SİYAH";
+}
+
+private void handlePlayerReplaced(String newPlayerName, String playerColor) {
+    System.out.println("🔄 Yeni oyuncu: " + newPlayerName + " (" + playerColor + ")");
+    
+    if (gameListener != null) {
+        // Kısa ve net mesaj
+        gameListener.onError("Yeni rakip: " + newPlayerName + " (" + playerColor + ")");
+    }
+}
+
+/**
+ * Oyun durumu mesajını işler
+ */
+private void handleGameStatus(String status) {
+    System.out.println("📊 Oyun durumu: " + status);
+    
+    if (gameListener != null) {
+        switch (status) {
+            case "STARTED":
+                gameListener.onError("Oyun başladı");
+                break;
+            case "WAITING":
+                gameListener.onError("Oyun bekleniyor");
+                break;
+            case "WAITING_TO_START":
+                gameListener.onError("Yeni oyuncu geldi - Oyun başlatılacak");
+                break;
+            case "RESUMED":
+                gameListener.onError("Yeni oyuncu geldi - Oyun devam ediyor");
+                break;
+            case "READY_NEEDED":
+                gameListener.onError("Hazır olun");
+                break;
+            case "RESET":
+                gameListener.onError("Oyun sıfırlandı - Yeni oyuncu bekleniyor");
+                break;
+            default:
+                gameListener.onError("Durum: " + status);
+                break;
+        }
+    }
+}
+/**
+ * Sunucu kapanma mesajını işler
+ */
+private void handleServerShutdown(String reason) {
+    System.out.println("🛑 Sunucu kapanıyor: " + reason);
+    
+    if (gameListener != null) {
+        gameListener.onServerShutdown(reason);
+    }
+    
+    // Bağlantıyı kapat
+    disconnect();
+} 
+/**
      * Oyun başlama mesajını işler - ✅ GELİŞTİRİLDİ
      */
     private void handleGameStart(String data) {
@@ -301,7 +405,14 @@ private Socket socket;
         sendMessage("PASS_TURN#" + playerId);
         System.out.println("🔄 Manuel sıra geçme isteği gönderildi - Oyuncu ID: " + playerId);
     }
+ private void handleWaitingForPlayer(String message) {
+    System.out.println("⏳ " + message);
     
+    if (gameListener != null) {
+        gameListener.onError(message);
+    }
+}
+
     /**
      * Oyuncu hazır mesajı gönderir
      */
