@@ -364,59 +364,48 @@ public class NetworkBoardPanel extends javax.swing.JPanel {
     /**
      * Hangi zarla hamle yapılacağını hesaplar - ZAR BÖLME SİSTEMİ İLE GELİŞTİRİLDİ
      */
-    private int calculateRequiredDice(int fromTriangle, int toTriangle, Color pieceColor) {
-        int requiredDistance = Math.abs(toTriangle - fromTriangle);
+ private int calculateRequiredDice(int fromTriangle, int toTriangle, Color pieceColor) {
+    // Çıkarma hamlesi
+    if (toTriangle == WHITE_HOME_INDEX || toTriangle == BLACK_HOME_INDEX) {
+        int exactDistance;
+        if (pieceColor == Color.WHITE) {
+            // BEYAZ: 23→1, 22→2, 21→3, 20→4, 19→5, 18→6
+            exactDistance = fromTriangle - 17; // 23-17=6, 22-17=5, ..., 18-17=1
+        } else {
+            // SİYAH: 0→1, 1→2, 2→3, 3→4, 4→5, 5→6  
+            exactDistance = fromTriangle + 1;
+        }
         
-        System.out.println("🎯 Hamle mesafesi: " + requiredDistance + ", Mevcut zarlar: " + availableDice);
+        System.out.println("🏠 Çıkarma mesafesi: " + exactDistance);
         
-        // ÇIKARMA HAMLESİ
-        if (toTriangle == WHITE_HOME_INDEX || toTriangle == BLACK_HOME_INDEX) {
-            int exactDistance;
-            if (pieceColor == Color.WHITE) {
-                exactDistance = 24 - fromTriangle; // 23→1, 22→2, ... 18→6
-            } else {
-                exactDistance = fromTriangle + 1;  // 0→1, 1→2, ... 5→6
-            }
-
-            // Tam mesafe var mı?
-            if (availableDice.contains(exactDistance)) {
-                return exactDistance;
-            }
-
-            // Büyük zarla çıkarma (basit kural)
-            for (int dice : availableDice) {
-                if (dice > exactDistance) {
-                    return dice;
-                }
-            }
-        } 
-        // NORMAL HAMLE - ZAR BÖLME İLE
-        else {
-            // Hareket yönü kontrolü
-            boolean correctDirection = false;
-            if (pieceColor == Color.WHITE) {
-                // Beyaz: 0→23 yönünde (artan indeks)
-                correctDirection = (toTriangle > fromTriangle);
-            } else {
-                // Siyah: 23→0 yönünde (azalan indeks)  
-                correctDirection = (toTriangle < fromTriangle);
-            }
-
-            if (correctDirection && availableDice.contains(requiredDistance)) {
-                System.out.println("✅ Zar bulundu: " + requiredDistance);
-                return requiredDistance;
+        // Tam mesafe varsa kullan
+        if (availableDice.contains(exactDistance)) {
+            return exactDistance;
+        }
+        
+        // Büyük zarla çıkarma
+        for (int dice : availableDice) {
+            if (dice > exactDistance) {
+                return dice;
             }
         }
-
-        System.out.println("❌ Uygun zar bulunamadı");
-        return -1; // Geçersiz hamle
+    } 
+    // Normal hamle
+    else {
+        int requiredDistance = Math.abs(toTriangle - fromTriangle);
+        if (availableDice.contains(requiredDistance)) {
+            return requiredDistance;
+        }
     }
+    
+    return -1;
+}  
 
     private int getPieceDirection(NetworkTaslabel piece) {
         if (piece.getTasRenk() == Color.WHITE) {
-            return 1; // Beyazlar saat yönü tersine
+            return -1; // Beyazlar saat yönü tersine
         } else {
-            return -1; // Siyahlar saat yönünde
+            return 1; // Siyahlar saat yönünde
         }
     }
 
@@ -432,70 +421,155 @@ public class NetworkBoardPanel extends javax.swing.JPanel {
     /**
      * Geçerli hamleleri günceller - ZAR BÖLME SİSTEMİ İLE GELİŞTİRİLDİ
      */
-    public void updateLegalMoves(NetworkTaslabel piece) {
-        legalMoves.clear();
-        if (piece == null || !isMyTurn || availableDice.isEmpty()) {
+   public void updateLegalMoves(NetworkTaslabel piece) {
+    legalMoves.clear();
+    
+    System.out.println("\n🔍 === HAMLE HESAPLAMA (YÖN DÜZELTİLDİ) ===");
+    
+    // Temel kontroller
+    if (piece == null) {
+        System.out.println("❌ Taş null!");
+        return;
+    }
+    
+    if (!isMyTurn) {
+        System.out.println("❌ Sıra sizde değil!");
+        return;
+    }
+    
+    if (availableDice.isEmpty()) {
+        System.out.println("❌ Kullanılabilir zar yok!");
+        System.out.println("   diceRolled: " + diceRolled);
+        System.out.println("   diceValues: [" + diceValues[0] + ", " + diceValues[1] + "]");
+        System.out.println("   availableDice: " + availableDice);
+        
+        // ÖNEMLİ: Eğer zar atıldı ama availableDice boşsa, zar sistemini sıfırla
+        if (diceRolled && (diceValues[0] > 0 || diceValues[1] > 0)) {
+            System.out.println("🔧 Zar sistemi onarılıyor...");
+            setAvailableDice(diceValues[0], diceValues[1]);
+        }
+        
+        if (availableDice.isEmpty()) {
             return;
         }
+    }
 
-        // Renk kontrolü
-        if ((piece.getTasRenk() == Color.WHITE && !isWhitePlayer)
-                || (piece.getTasRenk() == Color.BLACK && isWhitePlayer)) {
-            return;
-        }
+    // Renk kontrolü
+    Color pieceColor = piece.getTasRenk();
+    boolean colorMatch = (pieceColor == Color.WHITE && isWhitePlayer) || 
+                        (pieceColor == Color.BLACK && !isWhitePlayer);
+    
+    if (!colorMatch) {
+        System.out.println("❌ Bu taş size ait değil!");
+        System.out.println("   Taş rengi: " + (pieceColor == Color.WHITE ? "BEYAZ" : "SİYAH"));
+        System.out.println("   Oyuncu rengi: " + (isWhitePlayer ? "BEYAZ" : "SİYAH"));
+        return;
+    }
 
-        int currentTriangle = piece.getTriangleIndex();
-        Color pieceColor = piece.getTasRenk();
-        int direction = getPieceDirection(piece);
+    // Pozisyon ve yön bilgileri - DÜZELTILDI
+    int currentTriangle = piece.getTriangleIndex();
+    int direction = getPieceDirection(piece);
+    
+    System.out.println("✅ Taş bilgileri:");
+    System.out.println("   Renk: " + (pieceColor == Color.WHITE ? "BEYAZ" : "SİYAH"));
+    System.out.println("   Konum: " + currentTriangle);
+    System.out.println("   Yön: " + direction + " (" + 
+                      (direction > 0 ? "SİYAH yönü (0→23)" : "BEYAZ yönü (23→0)") + ")");
+    System.out.println("   Zarlar: " + availableDice);
 
-        System.out.println("🔍 Hamle hesaplıyor: Taş=" + pieceColor + ", Konum=" + currentTriangle + ", Zarlar=" + availableDice);
-
-        // Her zar değeri için kontrol et (zar bölme sistemi)
-        for (int diceValue : availableDice) {
-            int targetTriangle = currentTriangle + (diceValue * direction);
-            System.out.println("  🎯 Zar " + diceValue + " için hedef: " + targetTriangle + " (yön: " + direction + ")");
+    // Her zar değeri için hamle kontrolü
+    int validMoveCount = 0;
+    
+    for (int diceValue : availableDice) {
+        int targetTriangle = currentTriangle + (diceValue * direction);
+        
+        System.out.println("\n  🎲 Zar " + diceValue + ":");
+        System.out.println("    " + currentTriangle + " + (" + diceValue + " × " + direction + ") = " + targetTriangle);
+        
+        // Normal hamle (0-23 arası)
+        if (targetTriangle >= 0 && targetTriangle < 24) {
+            boolean valid = isValidMove(targetTriangle, pieceColor);
+            System.out.println("    Normal hamle: " + (valid ? "✅ GEÇERLİ" : "❌ GEÇERSİZ"));
             
-            // Normal hamle kontrolü (0-23 arası)
-            if (targetTriangle >= 0 && targetTriangle < 24) {
-                boolean validDir = isMoveDirectionValid(piece, currentTriangle, targetTriangle);
-                boolean validMove = isValidMove(targetTriangle, pieceColor);
-                
-                if (validDir && validMove && !legalMoves.contains(targetTriangle)) {
-                    legalMoves.add(targetTriangle);
-                    System.out.println("    ✅ Geçerli hamle: " + currentTriangle + " → " + targetTriangle + " (zar: " + diceValue + ")");
-                } else {
-                    if (!validDir) {
-                        System.out.println("    ❌ Geçersiz yön: " + currentTriangle + " → " + targetTriangle);
-                    }
-                    if (!validMove) {
-                        List<NetworkTaslabel> targetPieces = pieces.get(targetTriangle);
-                        if (!targetPieces.isEmpty() && targetPieces.get(0).getTasRenk() != pieceColor) {
-                            System.out.println("    ❌ Hedef üçgende rakipten " + targetPieces.size() + " taş var. Hamle engellendi.");
-                        } else {
-                            System.out.println("    ❌ Diğer geçersiz hamle nedeni.");
-                        }
-                    }
-                }
-            } 
-            // Çıkış (bear off) kontrolü
-            else if (pieceColor == Color.WHITE && targetTriangle >= 24 && allPiecesInHome(pieceColor)) {
-                if (!legalMoves.contains(WHITE_HOME_INDEX)) {
+            if (valid) {
+                legalMoves.add(targetTriangle);
+                validMoveCount++;
+            }
+        } 
+        // Çıkış kontrolü (bear off) - YÖN DÜZELTMESI İLE
+        else {
+            System.out.println("    Çıkış hamlesi kontrol ediliyor...");
+            
+            boolean canBearOff = false;
+            
+            // BEYAZ çıkış kontrolü (Home: 18-23, Hedef: < 0)
+            if (pieceColor == Color.WHITE && targetTriangle < 0) {
+                if (currentTriangle >= 18 && currentTriangle <= 23 && allPiecesInHome(Color.WHITE)) {
+                    canBearOff = true;
                     legalMoves.add(WHITE_HOME_INDEX);
-                    System.out.println("    ✅ Beyaz çıkarma: " + currentTriangle + " → HOME (zar: " + diceValue + ")");
+                    validMoveCount++;
+                    System.out.println("    ✅ BEYAZ çıkış geçerli");
+                } else {
+                    System.out.println("    ❌ BEYAZ çıkış şartları sağlanmıyor");
+                    System.out.println("      Home'da mı: " + (currentTriangle >= 18 && currentTriangle <= 23));
+                    System.out.println("      Tümü home'da mı: " + allPiecesInHome(Color.WHITE));
                 }
-            } else if (pieceColor == Color.BLACK && targetTriangle < 0 && allPiecesInHome(pieceColor)) {
-                if (!legalMoves.contains(BLACK_HOME_INDEX)) {
+            }
+            // SİYAH çıkış kontrolü (Home: 0-5, Hedef: >= 24)  
+            else if (pieceColor == Color.BLACK && targetTriangle >= 24) {
+                if (currentTriangle >= 0 && currentTriangle <= 5 && allPiecesInHome(Color.BLACK)) {
+                    canBearOff = true;
                     legalMoves.add(BLACK_HOME_INDEX);
-                    System.out.println("    ✅ Siyah çıkarma: " + currentTriangle + " → HOME (zar: " + diceValue + ")");
+                    validMoveCount++;
+                    System.out.println("    ✅ SİYAH çıkış geçerli");
+                } else {
+                    System.out.println("    ❌ SİYAH çıkış şartları sağlanmıyor");
+                    System.out.println("      Home'da mı: " + (currentTriangle >= 0 && currentTriangle <= 5));
+                    System.out.println("      Tümü home'da mı: " + allPiecesInHome(Color.BLACK));
                 }
             } else {
-                System.out.println("    ❌ Çıkarma koşulları sağlanmıyor");
+                System.out.println("    ❌ Çıkış yönü yanlış");
             }
         }
-
-        System.out.println("🎯 Toplam geçerli hamle: " + legalMoves.size() + " → " + legalMoves);
-        repaint();
     }
+
+    System.out.println("\n📊 SONUÇ:");
+    System.out.println("  Geçerli hamle sayısı: " + validMoveCount);
+    System.out.println("  Hedefler: " + legalMoves);
+    
+    if (validMoveCount == 0) {
+        System.out.println("🚫 BU TAŞ HAREKET EDEMİYOR!");
+        
+        // Detaylı sebep analizi
+        System.out.println("\n🔍 SEBEP ANALİZİ:");
+        for (int diceValue : availableDice) {
+            int target = currentTriangle + (diceValue * direction);
+            System.out.println("  Zar " + diceValue + " → Hedef " + target);
+            
+            if (target >= 0 && target < 24) {
+                List<NetworkTaslabel> targetPieces = pieces.get(target);
+                if (targetPieces.isEmpty()) {
+                    System.out.println("    → Hedef boş ama yine de geçersiz (BUG!)");
+                } else {
+                    Color targetColor = targetPieces.get(0).getTasRenk();
+                    int count = targetPieces.size();
+                    if (targetColor != pieceColor && count > 1) {
+                        System.out.println("    → Rakip " + count + " taşla engelli");
+                    } else {
+                        System.out.println("    → Bilinmeyen engel (BUG!)");
+                    }
+                }
+            } else {
+                System.out.println("    → Çıkış hamlesi ama şartlar sağlanmıyor");
+            }
+        }
+    }
+    
+    System.out.println("=================================\n");
+    
+    repaint();
+}
+
 
     /**
      * Çıkarma yapılabilir mi kontrol eder - BASİTLEŞTİRİLDİ
@@ -531,27 +605,38 @@ public class NetworkBoardPanel extends javax.swing.JPanel {
     /**
      * Hamlenin geçerli olup olmadığını kontrol eder - BASİTLEŞTİRİLDİ
      */
-    private boolean isValidMove(int targetTriangle, Color pieceColor) {
-        if (targetTriangle < 0 || targetTriangle >= 24) {
-            return false;
-        }
-
-        List<NetworkTaslabel> targetPieces = pieces.get(targetTriangle);
-
-        // Hedef üçgen boşsa hamle geçerli
-        if (targetPieces.isEmpty()) {
-            return true;
-        }
-
-        // Hedef üçgende aynı renk taşlar varsa hamle geçerli
-        if (targetPieces.get(0).getTasRenk() == pieceColor) {
-            return true;
-        }
-
-        // Hedef üçgende rakip taşı var
-        // Rakipten 1 taş varsa alınabilir (hit), 2 veya daha fazla varsa alamaz
-        return targetPieces.size() == 1;
+  private boolean isValidMove(int targetTriangle, Color pieceColor) {
+    if (targetTriangle < 0 || targetTriangle >= 24) {
+        System.out.println("      isValidMove: Geçersiz konum " + targetTriangle);
+        return false;
     }
+
+    List<NetworkTaslabel> targetPieces = pieces.get(targetTriangle);
+
+    // Hedef üçgen boşsa hamle geçerli
+    if (targetPieces.isEmpty()) {
+        System.out.println("      isValidMove: Hedef boş → GEÇERLİ");
+        return true;
+    }
+
+    Color targetColor = targetPieces.get(0).getTasRenk();
+    int targetCount = targetPieces.size();
+    
+    // Hedef üçgende aynı renk taşlar varsa hamle geçerli
+    if (targetColor == pieceColor) {
+        System.out.println("      isValidMove: Aynı renk (" + targetCount + " taş) → GEÇERLİ");
+        return true;
+    }
+
+    // Hedef üçgende rakip taşı var
+    if (targetCount == 1) {
+        System.out.println("      isValidMove: Rakip tek taş (hit mümkün) → GEÇERLİ");
+        return true;
+    } else {
+        System.out.println("      isValidMove: Rakip " + targetCount + " taş (engelli) → GEÇERSİZ");
+        return false;
+    }
+}
 
     /**
      * OTOMATIK SIRA GEÇİŞİ KONTROLÜ - DÜZELTİLDİ
