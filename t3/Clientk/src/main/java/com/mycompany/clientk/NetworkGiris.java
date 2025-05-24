@@ -20,7 +20,7 @@ import java.awt.event.ActionListener;
 public class NetworkGiris extends JFrame {
     
     // Sabit sunucu ayarları
-    private static final String SERVER_ADDRESS = "13.60.97.46";
+    private static final String SERVER_ADDRESS = "localhost";
     private static final int SERVER_PORT = 8080;
     
     private JPanel mainPanel;

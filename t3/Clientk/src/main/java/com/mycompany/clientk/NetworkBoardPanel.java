@@ -10,6 +10,7 @@ package com.mycompany.clientk;
  */
 import java.awt.BasicStroke;
 import java.awt.Color;
+import java.awt.Container;
 import java.awt.Dimension;
 import java.awt.Font;
 import java.awt.Graphics;
@@ -24,40 +25,21 @@ import javax.swing.JPanel;
 import javax.swing.JOptionPane;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
+import static java.util.stream.Collectors.toList;
 
 /**
  * Ağ tabanlı oyun için tahta paneli - Tam fonksiyonel versiyon
  */
 public class NetworkBoardPanel extends javax.swing.JPanel {
 
-   /*
- * Click nbfs://nbhost/SystemFileSystem/Templates/Licenses/license-default.txt to change this license
- * Click nbfs://nbhost/SystemFileSystem/Templates/Classes/Class.java to edit this template
- */
-
-
-/*
- * Click nbfs://nbhost/SystemFileSystem/Templates/Licenses/license-default.txt to change this license
- * Click nbfs://nbhost/SystemFileSystem/Templates/Classes/Class.java to edit this template
- */
-
-/**
- *
- * @author zeysu
- */
-
-
-/**
- * Ağ tabanlı oyun için tahta paneli - Tam fonksiyonel versiyon
- */
-
-    /**
+   /**
      * Üçgen sınıfı - Board geometrisi için
      */
     static class Triangle {
+
         int x, y;
         boolean isUp;
-        
+
         Triangle(int x, int y, boolean isUp) {
             this.x = x;
             this.y = y;
@@ -89,6 +71,10 @@ public class NetworkBoardPanel extends javax.swing.JPanel {
     private boolean isDoubleRoll = false; // Çift zar kontrolü
     private int doubleRollCount = 0; // Çift zarda kaç hamle kaldı
 
+    // ============ YENİ EKLENEN ÖZELLİKLER - ÇİFT HAMLE SORUNU İÇİN ============
+    private int myPlayerId = -1; // Kendi oyuncu ID'nizi buraya kaydedin
+    private boolean isApplyingNetworkMove = false; // Network hamle durumu takibi
+
     public NetworkBoardPanel(NetworkGameFrame parentFrame) {
         this.parentFrame = parentFrame;
         initComponents();
@@ -100,7 +86,7 @@ public class NetworkBoardPanel extends javax.swing.JPanel {
         } catch (IOException e) {
             System.err.println("Arkaplan resmi yüklenemedi: " + e.getMessage());
         }
-        
+
         for (int i = 0; i < 24; i++) {
             pieces.put(i, new ArrayList<>());
         }
@@ -111,15 +97,20 @@ public class NetworkBoardPanel extends javax.swing.JPanel {
         // Mouse listener ekle
         addMouseListener(new MouseAdapter() {
             public void mousePressed(MouseEvent e) {
+                // Network hamle uygulanıyorsa tıklamaları engelle
+                if (isApplyingNetworkMove) {
+                    return;
+                }
+
                 // Sıra sende değilse veya zar atılmamışsa tıklama işlemeyecek
                 if (!isMyTurn || !diceRolled) {
-                    System.out.println("❌ Sıra sizde değil veya zar atılmamış!");
+                    System.out.println("Sıra sizde değil veya zar atılmamış!");
                     return;
                 }
 
                 int clickedIndex = findTriangleAt(e.getX(), e.getY());
                 if (clickedIndex == -1) {
-                    System.out.println("❌ Geçersiz tıklama konumu!");
+                    System.out.println("Geçersiz tıklama konumu!");
                     return;
                 }
 
@@ -127,7 +118,7 @@ public class NetworkBoardPanel extends javax.swing.JPanel {
                 if (selectedPiece == null) {
                     List<NetworkTaslabel> trianglePieces = pieces.get(clickedIndex);
                     if (trianglePieces == null || trianglePieces.isEmpty()) {
-                        System.out.println("❌ Seçilen üçgende taş yok!");
+                        System.out.println("Seçilen üçgende taş yok!");
                         return;
                     }
 
@@ -145,64 +136,151 @@ public class NetworkBoardPanel extends javax.swing.JPanel {
                     } else {
                         System.out.println("❌ Sadece kendi taşlarınızı seçebilirsiniz!");
                     }
-                }
+                } 
                 // Taş hareket ettirme aşaması
-                else {
-                    if (!legalMoves.contains(clickedIndex)) {
-                        System.out.println("❌ Geçersiz hamle! Hedef: " + clickedIndex);
-                        // Taşı eski konumuna döndür
-                        if (selectedPiece != null) {
-                            repositionPieceInTriangle(selectedPiece, currentPos);
-                        }
-                        return;
-                    }
+              else {
+    if (!legalMoves.contains(clickedIndex)) {
+        System.out.println("❌ Geçersiz hamle! Hedef: " + clickedIndex);
+        // Seçimi iptal et
+        if (selectedPiece != null) {
+            selectedPiece.setSelected(false);
+        }
+        selectedPiece = null;
+        currentPos = -1;
+        legalMoves.clear();
+        repaint();
+        return;
+    }
 
-                    // Taşı önceki konumdan çıkar
-                    List<NetworkTaslabel> fromList = pieces.get(currentPos);
-                    fromList.remove(selectedPiece);
+    System.out.println("🎯 Hamle yapılıyor - Player: " + myPlayerId + 
+                       ", From: " + currentPos + ", To: " + clickedIndex);
 
-                    // Taşı yeni konuma ekle
-                    List<NetworkTaslabel> toList;
-                    if (clickedIndex == WHITE_HOME_INDEX) {
-                        toList = whiteHome;
-                        positionPieceInHome(selectedPiece);
-                        System.out.println("✅ Taş beyaz home'a alındı");
-                    } else if (clickedIndex == BLACK_HOME_INDEX) {
-                        toList = blackHome;
-                        positionPieceInHome(selectedPiece);
-                        System.out.println("✅ Taş siyah home'a alındı");
-                    } else {
-                        toList = pieces.get(clickedIndex);
-                        toList.add(selectedPiece);
-                        repositionPieceInTriangle(selectedPiece, clickedIndex);
-                        System.out.println("✅ Taş üçgen " + clickedIndex + "'e taşındı");
-                    }
+    // ÖNEMLİ: Hamleyi hemen GUI'de uygula
+    applyLocalMove(currentPos, clickedIndex);
 
-                    // Taşın durumunu güncelle
-                    selectedPiece.setSelected(false);
-                    selectedPiece.setTriangleIndex(clickedIndex);
+    // Zar kullanımını hesapla ve güncelle
+    int diceValue = calculateRequiredDice(currentPos, clickedIndex, selectedPiece.getTasRenk());
+    if (diceValue > 0) {
+        consumeDice(diceValue);
+    }
 
-                    // Zar kullanımını hesapla ve güncelle
-                    int diceValue = calculateRequiredDice(currentPos, clickedIndex, selectedPiece.getTasRenk());
-                    if (diceValue > 0) {
-                        consumeDice(diceValue);
-                    }
+    // Sonra sunucuya bildir
+    onPlayerMove(selectedPiece, currentPos, clickedIndex);
 
-                    // Sunucuya bildir
-                    onPlayerMove(selectedPiece, currentPos, clickedIndex);
+    // Seçimi temizle
+    if (selectedPiece != null) {
+        selectedPiece.setSelected(false);
+    }
+    selectedPiece = null;
+    currentPos = -1;
+    legalMoves.clear();
 
-                    // Seçimi temizle
-                    selectedPiece = null;
-                    currentPos = -1;
-                    legalMoves.clear();
-                    repaint();
+    // Skor ve kazanma durumu kontrolü
+    updateScores();
+    checkForWinner();
 
-                    // Skor ve kazanma durumu kontrolü
-                    updateScores();
-                    checkForWinner();
-                }
+    repaint();
+}
             }
         });
+    }
+
+    // ============ YENİ METODLAR - ÇİFT HAMLE SORUNU ÇÖZÜMÜ ============
+
+    /**
+     * Yerel hamle uygulama metodu (sadece kendi hamlelerimiz için)
+     */
+   private void applyLocalMove(int fromTriangle, int toTriangle) {
+    System.out.println("🎯 Yerel hamle uygulanıyor: " + fromTriangle + " → " + toTriangle);
+    
+    if (selectedPiece == null) {
+        System.err.println("❌ selectedPiece null!");
+        return;
+    }
+    
+    // 1. Taşı önceki üçgenden çıkar
+    List<NetworkTaslabel> fromList = pieces.get(fromTriangle);
+    if (fromList.contains(selectedPiece)) {
+        fromList.remove(selectedPiece);
+        System.out.println("✅ Taş listeden çıkarıldı. Kalan: " + fromList.size());
+    }
+
+    // 2. Component'i GUI'den MUTLAKA kaldır
+    if (selectedPiece.getParent() != null) {
+        Container parent = selectedPiece.getParent();
+        parent.remove(selectedPiece);
+        System.out.println("✅ Taş GUI'den kaldırıldı");
+    } else {
+        System.out.println("⚠️ Taşın parent'ı null!");
+    }
+
+    // 3. Eski üçgeni temizle ve yeniden düzenle
+    rearrangePiecesInTriangle(fromTriangle);
+
+    // 4. Yeni konuma ekle
+    List<NetworkTaslabel> toList = getTargetList(toTriangle);
+    toList.add(selectedPiece);
+    selectedPiece.setTriangleIndex(toTriangle);
+    System.out.println("✅ Taş yeni listeye eklendi. Toplam: " + toList.size());
+
+    // 5. GUI'ye yeniden ekle
+    add(selectedPiece);
+    setComponentZOrder(selectedPiece, 0);
+    System.out.println("✅ Taş GUI'ye yeniden eklendi");
+
+    // 6. Pozisyonla
+    positionPiece(selectedPiece, toTriangle);
+
+    // 7. GUI'yi zorla güncelle
+    revalidate();
+    repaint();
+    
+    System.out.println("🔄 applyLocalMove tamamlandı");
+}
+
+    /**
+     * Helper metot - Hedef listeyi döndürür
+     */
+    private List<NetworkTaslabel> getTargetList(int targetIndex) {
+        if (targetIndex == WHITE_HOME_INDEX) {
+            return whiteHome;
+        } else if (targetIndex == BLACK_HOME_INDEX) {
+            return blackHome;
+        } else {
+            return pieces.get(targetIndex);
+        }
+    }
+
+    /**
+     * Helper metot - Taşı pozisyonlar
+     */
+    private void positionPiece(NetworkTaslabel piece, int targetIndex) {
+        if (targetIndex == WHITE_HOME_INDEX || targetIndex == BLACK_HOME_INDEX) {
+            positionPieceInHome(piece);
+        } else {
+            repositionPieceInTriangle(piece, targetIndex);
+            rearrangePiecesInTriangle(targetIndex);
+        }
+    }
+
+    /**
+     * Player ID'yi ayarlama metodu
+     */
+    public void setMyPlayerId(int playerId) {
+        this.myPlayerId = playerId;
+        System.out.println("🆔 Oyuncu ID ayarlandı: " + playerId);
+    }
+
+    /**
+     * Debug metodu
+     */
+    private void debugPieceState(String action, int triangleIndex) {
+        List<NetworkTaslabel> list = pieces.get(triangleIndex);
+        System.out.println("🔍 " + action + " - Üçgen " + triangleIndex + " taş sayısı: " + 
+                          (list != null ? list.size() : "null"));
+        
+        // GUI'deki component sayısını da kontrol et
+        System.out.println("🖥️ Panel'deki toplam component: " + getComponentCount());
     }
 
     /**
@@ -232,9 +310,9 @@ public class NetworkBoardPanel extends javax.swing.JPanel {
         this.diceValues[0] = die1;
         this.diceValues[1] = die2;
         this.diceRolled = true;
-         if (selectedPiece != null) {
-        updateLegalMoves(selectedPiece);
-    }
+        if (selectedPiece != null) {
+            updateLegalMoves(selectedPiece);
+        }
         repaint();
     }
 
@@ -252,37 +330,37 @@ public class NetworkBoardPanel extends javax.swing.JPanel {
         this.diceRolled = false;
         repaint();
     }
-    
+
     /**
      * Hamle yapıldığında zar kullanımını günceller - DÜZELTİLDİ
      */
     private void consumeDice(int diceValue) {
         System.out.println("🎲 Zar kullanmaya çalışıyor: " + diceValue + ", Mevcut zarlar: " + availableDice);
-        
+
         if (availableDice.contains(diceValue)) {
             // Sadece bir tane zar değerini kaldır
             availableDice.remove(Integer.valueOf(diceValue));
-            
+
             if (isDoubleRoll) {
                 doubleRollCount--;
                 System.out.println("🎲 Çift zardan " + diceValue + " kullanıldı. Kalan hamle: " + doubleRollCount + ", Zarlar: " + availableDice);
             } else {
                 System.out.println("🎲 Zar " + diceValue + " kullanıldı. Kalan zarlar: " + availableDice);
             }
-            
+
             // Seçili taş varsa hamleleri yeniden hesapla
             if (selectedPiece != null) {
                 updateLegalMoves(selectedPiece);
             }
-            
+
             // Otomatik sıra geçişi kontrolü
             checkAutoPassTurn();
-            
+
         } else {
             System.err.println("❌ Zar bulunamadı: " + diceValue + " (Mevcut: " + availableDice + ")");
         }
     }
-    
+
     /**
      * Hangi zarla hamle yapılacağını hesaplar - DÜZELTİLDİ
      */
@@ -295,23 +373,22 @@ public class NetworkBoardPanel extends javax.swing.JPanel {
             } else {
                 exactDistance = fromTriangle + 1;  // 0→1, 1→2, ... 5→6
             }
-            
+
             // Tam mesafe var mı?
             if (availableDice.contains(exactDistance)) {
                 return exactDistance;
             }
-            
+
             // Büyük zarla çıkarma (basit kural)
             for (int dice : availableDice) {
                 if (dice > exactDistance) {
                     return dice;
                 }
             }
-        } 
-        // NORMAL HAMLE
+        } // NORMAL HAMLE
         else {
             int requiredDice = Math.abs(toTriangle - fromTriangle);
-            
+
             // Hareket yönü kontrolü
             boolean correctDirection = false;
             if (pieceColor == Color.WHITE) {
@@ -321,14 +398,15 @@ public class NetworkBoardPanel extends javax.swing.JPanel {
                 // Siyah: 23→0 yönünde (azalan indeks)  
                 correctDirection = (toTriangle < fromTriangle);
             }
-            
+
             if (correctDirection && availableDice.contains(requiredDice)) {
                 return requiredDice;
             }
         }
-        
+
         return -1; // Geçersiz hamle
     }
+
     private int getPieceDirection(NetworkTaslabel piece) {
         if (piece.getTasRenk() == Color.WHITE) {
             return 1; // Beyazlar saat yönü tersine
@@ -336,14 +414,12 @@ public class NetworkBoardPanel extends javax.swing.JPanel {
             return -1; // Siyahlar saat yönünde
         }
     }
-    
+
     /**
-     * Taşın rengine göre hareket yönünü döndürür
-     * Beyaz: -1 (azalan index), Siyah: +1 (artan index)
+     * Taşın rengine göre hareket yönünü döndürür Beyaz: -1 (azalan index),
+     * Siyah: +1 (artan index)
      */
-    
-  
-       private boolean isMoveDirectionValid(NetworkTaslabel piece, int from, int to) {
+    private boolean isMoveDirectionValid(NetworkTaslabel piece, int from, int to) {
         int direction = getPieceDirection(piece);
         return (to - from) * direction > 0;
     }
@@ -446,19 +522,19 @@ public class NetworkBoardPanel extends javax.swing.JPanel {
         if (targetTriangle < 0 || targetTriangle >= 24) {
             return false;
         }
-        
+
         List<NetworkTaslabel> targetPieces = pieces.get(targetTriangle);
-        
+
         // Hedef üçgen boşsa hamle geçerli
         if (targetPieces.isEmpty()) {
             return true;
         }
-        
+
         // Hedef üçgende aynı renk taşlar varsa hamle geçerli
         if (targetPieces.get(0).getTasRenk() == pieceColor) {
             return true;
         }
-        
+
         // Hedef üçgende rakip taşı var
         // Rakipten 1 taş varsa alınabilir (hit), 2 veya daha fazla varsa alamaz
         return targetPieces.size() == 1;
@@ -468,8 +544,10 @@ public class NetworkBoardPanel extends javax.swing.JPanel {
      * OTOMATIK SIRA GEÇİŞİ KONTROLÜ - DÜZELTİLDİ
      */
     private void checkAutoPassTurn() {
-        if (!isMyTurn) return;
-        
+        if (!isMyTurn) {
+            return;
+        }
+
         // Tüm zarlar bittiyse
         if (availableDice.isEmpty()) {
             System.out.println("🔄 Tüm zarlar kullanıldı - Sıra otomatik geçiyor");
@@ -478,7 +556,7 @@ public class NetworkBoardPanel extends javax.swing.JPanel {
             }
             return;
         }
-        
+
         // Hamle yapılabilir mi kontrol et
         Color myColor = isWhitePlayer ? Color.WHITE : Color.BLACK;
         if (!hasValidMoves(myColor)) {
@@ -488,19 +566,22 @@ public class NetworkBoardPanel extends javax.swing.JPanel {
             }
         }
     }
-     /**
+
+    /**
      * Seçili taşı al - NetworkTaslabel için
      */
     public NetworkTaslabel getSelectedPiece() {
         return selectedPiece;
     }
-    
+
     /**
      * Taşı orijinal konumuna yerleştir - İYİLEŞTİRİLMİŞ
      */
     private void repositionPieceInTriangle(NetworkTaslabel piece, int triangleIndex) {
-        if (triangleIndex < 0 || triangleIndex >= 24) return;
-        
+        if (triangleIndex < 0 || triangleIndex >= 24) {
+            return;
+        }
+
         Triangle t = triangles[triangleIndex];
         List<NetworkTaslabel> trianglePieces = pieces.get(triangleIndex);
         int index = trianglePieces.indexOf(piece);
@@ -526,39 +607,68 @@ public class NetworkBoardPanel extends javax.swing.JPanel {
      * Üçgendeki taşları yeniden düzenler - İYİLEŞTİRİLMİŞ
      */
     private void rearrangePiecesInTriangle(int triangleIndex) {
-        if (triangleIndex < 0 || triangleIndex >= 24) return;
-        
-        Triangle t = triangles[triangleIndex];
-        List<NetworkTaslabel> trianglePieces = pieces.get(triangleIndex);
-
-        System.out.println("🔄 Üçgen " + triangleIndex + " yeniden düzenleniyor. Taş sayısı: " + trianglePieces.size());
-
-        for (int i = 0; i < trianglePieces.size(); i++) {
-            NetworkTaslabel piece = trianglePieces.get(i);
-
-            int tasBoyutu = 42;
-            int x = t.x - tasBoyutu / 2 - 20;
-
-            int y;
-            if (t.isUp) {
-                y = t.y + i * (tasBoyutu - 12) + 10;
-            } else {
-                y = t.y - tasBoyutu - i * (tasBoyutu - 12) - 10;
-            }
-
-            // Smooth repositioning
-            piece.setLocation(x, y);
-            
-            // Z-order ayarlaması (üstteki taşlar önde görünsün)
-            getParent().setComponentZOrder(piece, i);
-        }
-        
-        repaint(); // Görsel güncelleme
+    if (triangleIndex < 0 || triangleIndex >= 24) {
+        return;
     }
+
+    Triangle t = triangles[triangleIndex];
+    List<NetworkTaslabel> trianglePieces = pieces.get(triangleIndex);
+
+    System.out.println("🔄 Üçgen " + triangleIndex + " tamamen temizleniyor ve yeniden düzenleniyor. Liste sayısı: " + trianglePieces.size());
+
+    // ========== ÖNEMLİ: Bu üçgenle ilgili TÜM GUI component'lerini kaldır ==========
+    java.awt.Component[] allComponents = getComponents();
+    java.util.List<java.awt.Component> toRemove = new java.util.ArrayList<>();
+    
+    for (java.awt.Component comp : allComponents) {
+        if (comp instanceof NetworkTaslabel) {
+            NetworkTaslabel piece = (NetworkTaslabel) comp;
+            if (piece.getTriangleIndex() == triangleIndex) {
+                toRemove.add(comp);
+            }
+        }
+    }
+    
+    // Bulunan tüm component'leri kaldır
+    for (java.awt.Component comp : toRemove) {
+        remove(comp);
+        System.out.println("🗑️ GUI'den kaldırıldı: üçgen " + triangleIndex);
+    }
+
+    // ========== Sonra sadece listede olanları yeniden ekle ==========
+    for (int i = 0; i < trianglePieces.size(); i++) {
+        NetworkTaslabel piece = trianglePieces.get(i);
+
+        int tasBoyutu = 42;
+        int x = t.x - tasBoyutu / 2 - 20;
+
+        int y;
+        if (t.isUp) {
+            y = t.y + i * (tasBoyutu - 12) + 10;
+        } else {
+            y = t.y - tasBoyutu - i * (tasBoyutu - 12) - 10;
+        }
+
+        // Taşı ekle ve pozisyonla
+        add(piece);
+        piece.setBounds(x, y, tasBoyutu, tasBoyutu);
+        piece.setTriangleIndex(triangleIndex); // Index'i yeniden ayarla
+        setComponentZOrder(piece, 0);
+        
+        System.out.println("✅ Yeniden eklendi: üçgen " + triangleIndex + ", taş " + i);
+    }
+
+    // Panel güncelle
+    revalidate();
+    repaint();
+    
+    System.out.println("✅ Üçgen " + triangleIndex + " tamamlandı. Listede: " + trianglePieces.size() + ", GUI'de ekli: " + trianglePieces.size());
+}
 
     /**
      * Koordinat kontrolü ile üçgen bulma - İYİLEŞTİRİLMİŞ
-     * @return 
+     *
+     * @return
      */
     public int findTriangleAt(int x, int y) {
         // Home alanları kontrolü - Öncelikli
@@ -569,7 +679,7 @@ public class NetworkBoardPanel extends javax.swing.JPanel {
             System.out.println("🏠 Siyah HOME alanı tespit edildi");
             return BLACK_HOME_INDEX;
         }
-        
+
         // Üçgen arama - Geliştirilmiş algoritma
         int closestTriangle = -1;
         double minDistance = Double.MAX_VALUE;
@@ -584,8 +694,7 @@ public class NetworkBoardPanel extends javax.swing.JPanel {
                     minDistance = distance;
                     closestTriangle = i;
                 }
-            } 
-            // Alt üçgenler (0-11)
+            } // Alt üçgenler (0-11)
             else if (!t.isUp && y >= 250) {  // Y sınırını genişlettik
                 if (distance < minDistance) {
                     minDistance = distance;
@@ -613,16 +722,16 @@ public class NetworkBoardPanel extends javax.swing.JPanel {
     @Override
     protected void paintComponent(Graphics g) {
         super.paintComponent(g);
-        
+
         // Arkaplan
         if (backgroundImage != null) {
             g.drawImage(backgroundImage, 0, 0, getWidth(), getHeight(), this);
         }
-        
+
         // Orta çubuk
         g.setColor(new Color(139, 69, 19));
         g.fillRect(530, 0, 30, getHeight());
-        
+
         // Home alanları
         g.setColor(new Color(255, 248, 220));
         g.fillRect(1010, 200, 80, 250);
@@ -631,7 +740,7 @@ public class NetworkBoardPanel extends javax.swing.JPanel {
         g.setFont(new Font("Arial", Font.BOLD, 14));
         g.drawString("BEYAZ", 1025, 195);
         g.drawString("HOME", 1025, 475);
-        
+
         g.setColor(new Color(64, 64, 64));
         g.fillRect(10, 200, 80, 250);
         g.setColor(Color.WHITE);
@@ -639,11 +748,11 @@ public class NetworkBoardPanel extends javax.swing.JPanel {
         g.setFont(new Font("Arial", Font.BOLD, 14));
         g.drawString("SİYAH", 25, 195);
         g.drawString("HOME", 25, 475);
-        
+
         // Geçerli hamleleri göster
         if (!legalMoves.isEmpty()) {
             g.setColor(new Color(0, 255, 0, 80));
-            
+
             for (int triangleIndex : legalMoves) {
                 if (triangleIndex == WHITE_HOME_INDEX) {
                     g.fillRect(1010, 200, 80, 250);
@@ -651,10 +760,10 @@ public class NetworkBoardPanel extends javax.swing.JPanel {
                     g.fillRect(10, 200, 80, 250);
                 } else if (triangleIndex < 24) {
                     Triangle t = triangles[triangleIndex];
-                    
+
                     int[] xPoints = new int[3];
                     int[] yPoints = new int[3];
-                    
+
                     if (t.isUp) {
                         xPoints[0] = t.x - 30;
                         yPoints[0] = t.y + 100;
@@ -670,26 +779,26 @@ public class NetworkBoardPanel extends javax.swing.JPanel {
                         xPoints[2] = t.x + 30;
                         yPoints[2] = t.y - 100;
                     }
-                    
+
                     g.fillPolygon(xPoints, yPoints, 3);
                 }
             }
         }
-    
+
         // Sıra göstergesi
         g.setColor(isMyTurn ? Color.GREEN : Color.RED);
         g.fillOval(10, 10, 20, 20);
         g.setColor(Color.BLACK);
         g.drawOval(10, 10, 20, 20);
-        
+
         // Home skorları
         g.setColor(Color.BLACK);
         g.setFont(new Font("Arial", Font.BOLD, 20));
         g.drawString(String.valueOf(whiteHome.size()), 1040, 340);
-        
+
         g.setColor(Color.WHITE);
         g.drawString(String.valueOf(blackHome.size()), 40, 340);
-        
+
         // ZAR DURUMU GÖSTERGESİ
         g.setColor(Color.BLACK);
         g.setFont(new Font("Arial", Font.BOLD, 12));
@@ -718,7 +827,7 @@ public class NetworkBoardPanel extends javax.swing.JPanel {
             g.drawString("Hamle hakkınız bitti - Sıra geçecek!", 200, 65);
         }
     }
-    
+
     private void initComponents() {
         // NetBeans generated kod placeholder
     }
@@ -727,31 +836,31 @@ public class NetworkBoardPanel extends javax.swing.JPanel {
     public boolean isMyTurn() {
         return isMyTurn;
     }
-    
+
     public boolean isWhitePlayer() {
         return isWhitePlayer;
     }
-    
+
     public List<Integer> getLegalMoves() {
         return legalMoves;
     }
-    
+
     public void setSelectedPiece(NetworkTaslabel piece) {
         this.selectedPiece = piece;
         if (piece != null) {
             updateLegalMoves(piece);
         }
     }
-    
+
     public void setHoverPiece(NetworkTaslabel piece) {
         this.hoverPiece = piece;
         repaint();
     }
-    
+
     public List<Integer> getAvailableDice() {
         return availableDice;
     }
-    
+
     public boolean isDoubleRoll() {
         return isDoubleRoll;
     }
@@ -842,32 +951,69 @@ public class NetworkBoardPanel extends javax.swing.JPanel {
     }
 
     /**
-     * Sunucudan gelen hamleyi uygular
+     * ============ ÇİFT HAMLE SORUNU ÇÖZÜMÜ - SUNUCUDAN GELEN HAMLE ============
+     * Sunucudan gelen hamleyi uygular (SADECE RAKİP HAMLELERİ İÇİN)
      */
-    public void applyNetworkMove(int playerId, int fromTriangle, int toTriangle) {
-        // fromTriangle'dan taşı bul
-        List<NetworkTaslabel> fromList = pieces.get(fromTriangle);
-        if (fromList == null || fromList.isEmpty()) return;
-        NetworkTaslabel tas = fromList.get(fromList.size() - 1); // Son taşı al
-        fromList.remove(tas);
-        // Hedefe ekle
-        List<NetworkTaslabel> toList;
-        if (toTriangle == WHITE_HOME_INDEX) {
-            toList = whiteHome;
-        } else if (toTriangle == BLACK_HOME_INDEX) {
-            toList = blackHome;
-        } else {
-            toList = pieces.get(toTriangle);
-        }
-        toList.add(tas);
-        // Taşın yeni konumunu ayarla
-        if (toTriangle == WHITE_HOME_INDEX || toTriangle == BLACK_HOME_INDEX) {
-            positionPieceInHome(tas);
-        } else {
-            repositionPieceInTriangle(tas, toTriangle);
-        }
-        repaint();
+ public void applyNetworkMove(int playerId, int fromTriangle, int toTriangle) {
+    // Kendi hamlemi tekrar uygulama
+    if (playerId == myPlayerId) {
+        System.out.println("🚫 Kendi hamlemi tekrar uygulamıyorum: " + fromTriangle + " → " + toTriangle);
+        return;
     }
+    
+    System.out.println("🔄 Rakip hamlesini uyguluyorum: " + fromTriangle + " → " + toTriangle);
+    
+    isApplyingNetworkMove = true;
+    
+    try {
+        List<NetworkTaslabel> fromList = pieces.get(fromTriangle);
+        if (fromList == null || fromList.isEmpty()) {
+            System.err.println("❌ Kaynak üçgen boş: " + fromTriangle);
+            return;
+        }
+        
+        NetworkTaslabel movingPiece = fromList.get(fromList.size() - 1);
+        
+        // 1. Listeden çıkar
+        fromList.remove(movingPiece);
+        System.out.println("✅ Rakip taşı listeden çıkarıldı. Kalan: " + fromList.size());
+        
+        // 2. GUI'den kaldır
+        if (movingPiece.getParent() != null) {
+            movingPiece.getParent().remove(movingPiece);
+            System.out.println("✅ Rakip taşı GUI'den kaldırıldı");
+        }
+        
+        // 3. Eski üçgeni düzenle
+        rearrangePiecesInTriangle(fromTriangle);
+        
+        // 4. Yeni listeye ekle
+        List<NetworkTaslabel> toList = getTargetList(toTriangle);
+        toList.add(movingPiece);
+        movingPiece.setTriangleIndex(toTriangle);
+        System.out.println("✅ Rakip taşı yeni listeye eklendi. Toplam: " + toList.size());
+        
+        // 5. GUI'ye geri ekle
+        add(movingPiece);
+        setComponentZOrder(movingPiece, 0);
+        System.out.println("✅ Rakip taşı GUI'ye eklendi");
+        
+        // 6. Pozisyonla
+        positionPiece(movingPiece, toTriangle);
+        
+        // 7. Her iki üçgeni de düzenle
+        rearrangePiecesInTriangle(toTriangle);
+        
+        // 8. GUI'yi güncelle
+        revalidate();
+        repaint();
+        
+        System.out.println("✅ Rakip hamlesi tamamlandı");
+        
+    } finally {
+        isApplyingNetworkMove = false;
+    }
+}
 
     /**
      * Home'daki taşı konumlandırır
@@ -875,15 +1021,15 @@ public class NetworkBoardPanel extends javax.swing.JPanel {
     private void positionPieceInHome(NetworkTaslabel piece) {
         int homeX = (piece.getTasRenk() == Color.WHITE) ? 1040 : 40;
         int baseY = 250;
-        
+
         int count = (piece.getTasRenk() == Color.WHITE) ? whiteHome.size() : blackHome.size();
-        
+
         int row = (count - 1) / 2;
         int col = (count - 1) % 2;
-        
+
         int x = homeX + col * 25;
         int y = baseY + row * 20;
-        
+
         piece.setBounds(x, y, 20, 20);
     }
 
@@ -917,8 +1063,12 @@ public class NetworkBoardPanel extends javax.swing.JPanel {
     private boolean hasValidMoves(Color pieceColor) {
         for (int i = 0; i < 24; i++) {
             List<NetworkTaslabel> trianglePieces = pieces.get(i);
-            if (trianglePieces.isEmpty()) continue;
-            if (trianglePieces.get(0).getTasRenk() != pieceColor) continue;
+            if (trianglePieces.isEmpty()) {
+                continue;
+            }
+            if (trianglePieces.get(0).getTasRenk() != pieceColor) {
+                continue;
+            }
             int direction = (pieceColor == Color.WHITE) ? 1 : -1;
             for (int diceValue : availableDice) {
                 int targetTriangle = i + (diceValue * direction);
@@ -955,7 +1105,9 @@ public class NetworkBoardPanel extends javax.swing.JPanel {
     public void setAvailableDice(int die1, int die2) {
         availableDice.clear();
         if (die1 == die2) {
-            for (int i = 0; i < 4; i++) availableDice.add(die1);
+            for (int i = 0; i < 4; i++) {
+                availableDice.add(die1);
+            }
             isDoubleRoll = true;
             doubleRollCount = 4;
         } else {
@@ -975,19 +1127,21 @@ public class NetworkBoardPanel extends javax.swing.JPanel {
             for (int i = 0; i < 18; i++) {
                 List<NetworkTaslabel> trianglePieces = pieces.get(i);
                 for (NetworkTaslabel piece : trianglePieces) {
-                    if (piece.getTasRenk() == Color.WHITE) return false;
+                    if (piece.getTasRenk() == Color.WHITE) {
+                        return false;
+                    }
                 }
             }
         } else {
             for (int i = 6; i < 24; i++) {
                 List<NetworkTaslabel> trianglePieces = pieces.get(i);
                 for (NetworkTaslabel piece : trianglePieces) {
-                    if (piece.getTasRenk() == Color.BLACK) return false;
+                    if (piece.getTasRenk() == Color.BLACK) {
+                        return false;
+                    }
                 }
             }
         }
         return true;
     }
 }
-
-

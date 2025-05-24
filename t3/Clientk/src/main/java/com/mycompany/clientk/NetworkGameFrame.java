@@ -57,7 +57,10 @@ public class NetworkGameFrame extends javax.swing.JFrame implements NetworkGameL
         
         initializeUI();
         setupEventHandlers();
-        
+        // Player ID'yi board'a aktar - ÖNEMLİ!
+    if (board != null) {
+        board.setMyPlayerId(this.myPlayerId); // Bu henüz -1 olabilir
+    }
         setTitle("Tavla Online - " + playerName);
         setDefaultCloseOperation(EXIT_ON_CLOSE);
         setResizable(false);
@@ -306,39 +309,42 @@ public class NetworkGameFrame extends javax.swing.JFrame implements NetworkGameL
     }
     
     // NetworkGameListener implementasyonu
-    @Override
-    public void onGameStart(int player1Id, int player2Id, boolean isWhitePlayer) {
-        if (networkClient != null) {
-            networkClient.sendPlayerReady();
-            System.out.println("[CLIENT] PLAYER_READY mesajı GAME_START sonrası gönderildi! (myId=" + player1Id + ", rakipId=" + player2Id + ", isWhite=" + isWhitePlayer + ")");
-        }
-        System.out.println("\n=== 🎮 OYUN BAŞLATILIYOR ===");
-        System.out.println("onGameStart ÇAĞRILDI! player1Id=" + player1Id + ", player2Id=" + player2Id + ", isWhitePlayer=" + isWhitePlayer);
-        
-        this.myPlayerId = player1Id;
-        this.opponentPlayerId = player2Id;
-        this.isWhitePlayer = isWhitePlayer;
-        
-        // Oyun başında sıra kimseye verilmez, sadece TURN mesajı ile belirlenir
-        this.isMyTurn = false;
-        this.diceRolled = false;
-        
-        if (board != null) {
-            board.setPlayerColor(isWhitePlayer);
-            board.setMyTurn(isMyTurn);
-            board.resetGame();
-        }
-        
-        updateTurnUI(isMyTurn);
-        clearDiceDisplay();
-        
-        System.out.println("✅ Oyun başlatıldı:");
-        System.out.println("  Benim ID: " + this.myPlayerId);
-        System.out.println("  Rakip ID: " + this.opponentPlayerId);
-        System.out.println("  Renk: " + (isWhitePlayer ? "BEYAZ" : "SİYAH"));
-        System.out.println("  İlk sıra: SUNUCUDAN TURN MESAJI GELİNCE BELİRLENECEK");
-        System.out.println("=== ✅ OYUN BAŞLATILDI ===\n");
+   @Override
+public void onGameStart(int player1Id, int player2Id, boolean isWhitePlayer) {
+    if (networkClient != null) {
+        networkClient.sendPlayerReady();
+        System.out.println("[CLIENT] PLAYER_READY mesajı GAME_START sonrası gönderildi! (myId=" + player1Id + ", rakipId=" + player2Id + ", isWhite=" + isWhitePlayer + ")");
     }
+    
+    System.out.println("\n=== 🎮 OYUN BAŞLATILIYOR ===");
+    System.out.println("onGameStart ÇAĞRILDI! player1Id=" + player1Id + ", player2Id=" + player2Id + ", isWhitePlayer=" + isWhitePlayer);
+    
+    this.myPlayerId = player1Id;
+    this.opponentPlayerId = player2Id;
+    this.isWhitePlayer = isWhitePlayer;
+    
+    // Oyun başında sıra kimseye verilmez, sadece TURN mesajı ile belirlenir
+    this.isMyTurn = false;
+    this.diceRolled = false;
+    
+    // BURADA PLAYER ID'YI BOARD'A AKTAR!
+    if (board != null) {
+        board.setMyPlayerId(this.myPlayerId);  // 🔥 ÖNEMLİ: Player ID'yi aktar
+        board.setPlayerColor(isWhitePlayer);
+        board.setMyTurn(isMyTurn);
+        board.resetGame();
+    }
+    
+    updateTurnUI(isMyTurn);
+    clearDiceDisplay();
+    
+    System.out.println("✅ Oyun başlatıldı:");
+    System.out.println("  Benim ID: " + this.myPlayerId);
+    System.out.println("  Rakip ID: " + this.opponentPlayerId);
+    System.out.println("  Renk: " + (isWhitePlayer ? "BEYAZ" : "SİYAH"));
+    System.out.println("  İlk sıra: SUNUCUDAN TURN MESAJI GELİNCE BELİRLENECEK");
+    System.out.println("=== ✅ OYUN BAŞLATILDI ===\n");
+}
     
     @Override
     public void onDiceRoll(int dice1, int dice2) {
