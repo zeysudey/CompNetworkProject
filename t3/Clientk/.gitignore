@@ -1,0 +1,16 @@
+# Maven
+target/
+
+# Compiled class files
+*.class
+
+# NetBeans
+nbproject/private/
+nbactions.xml
+
+# Logs
+*.log
+
+# OS files
+.DS_Store
+Thumbs.db
