@@ -27,7 +27,7 @@ Bu proje Java Swing ve Socket programlama kullanılarak geliştirilmiş **online
 ![menu](images/ikioyuncu.png) 
 
 ### Oyun Ekranı
-![game](images/oyun ekranı.png) 
+![game](images/oyun.png) 
 
 
 
